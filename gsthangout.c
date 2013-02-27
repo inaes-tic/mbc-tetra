@@ -298,7 +298,8 @@ cheese_camera_plugged_cb (CheeseCameraDeviceMonitor *monitor,
     GHashTable *cameras = user_data;
 
     g_print ("found camera: '%s'\n", cheese_camera_device_get_name (device));
-    g_hash_table_insert (cameras, cheese_camera_device_get_uuid (device),
+    g_hash_table_insert (cameras,
+                         (void *) cheese_camera_device_get_uuid (device),
                          device);
 }
 
@@ -318,8 +319,9 @@ GHashTable *
 cheese_get_cameras_hash (void)
 {
     GHashTable			*cameras;
-
     CheeseCameraDeviceMonitor   *cam_mon;
+
+    g_printerr ("initing cameras");
 
     cameras = g_hash_table_new (g_str_hash, g_str_equal);
 
@@ -374,6 +376,8 @@ cheese_init_cam (GHashTable *cameras, ClutterActor *texture)
 
         return cam;
     }
+
+    return NULL;
 }
 
 
@@ -394,9 +398,18 @@ main (int argc, char *argv[])
   GHashTable		*cameras;
   CheeseCamera		*cam;
 
+  //  cheese_gtk_init (&argc, &argv);
+  if (!clutter_init(&argc, &argv)) {
+    g_printf ("Couldn't init clutter");
+    return -1;
+  }
+
+  gst_init (&argc, &argv);
+  cheese_init (&argc, &argv);
+  /*
   result = clutter_gst_init_with_args (&argc,
                                        &argv,
-                                       " - Test alpha with video textures",
+                                       "TetraPack - Malbec barato para todos",
                                        options,
                                        NULL,
                                        &error);
@@ -406,9 +419,8 @@ main (int argc, char *argv[])
       g_error_free (error);
       return EXIT_FAILURE;
     }
-
-  cheese_init (&argc, &argv);
-
+x  */
+  /*
   actors = 2 + argc;
 
   texturea = g_alloca (sizeof (ClutterActor *) * actors);
@@ -425,9 +437,10 @@ main (int argc, char *argv[])
   texture = g_object_new (CLUTTER_TYPE_TEXTURE,
                           "disable-slicing", TRUE,
                           NULL);
+  */
   cameras = cheese_get_cameras_hash ();
-  cam = cheese_init_cam (cameras, texture);
-
+  //  cam = cheese_init_cam (cameras, texture);
+  /*
   texturea[0] = texture; //actor_from_gst (s1, NULL);
   texturea[1] = actor_from_gst (s2, NULL);
 
@@ -444,13 +457,13 @@ main (int argc, char *argv[])
       g_print ("--> %s\n", path);
       texturea[i+1] = actor_from_gst (NULL, path);
       /*      constraint = clutter_bind_constraint_new (box, CLUTTER_BIND_SIZE, 0.0);
-              clutter_actor_add_constraint_with_name (texturea[i+1], "size", constraint);*/
+              clutter_actor_add_constraint_with_name (texturea[i+1], "size", constraint);*\/
       clutter_actor_add_child (CLUTTER_ACTOR (box), texturea[i+1]);
       g_free (path);
   }
 
   clutter_actor_show_all (stage);
-
+*/
   clutter_main();
 
   return EXIT_SUCCESS;

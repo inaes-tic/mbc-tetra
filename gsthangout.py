@@ -6,11 +6,46 @@ from gi.repository import Gtk
 from gi.repository import Gst
 from gi.repository import Clutter
 from gi.repository import GtkClutter
+from gi.repository import Cheese
 # FIXME: this still requires Gst 0.10, it's the only impediment to migrate to 1.0
 from gi.repository import ClutterGst
 
 ClutterGst.init(None)
 Gst.init(None)
+
+class CameraHandler:
+    def __init__ ():
+
+        self.cameras = {}
+
+        self.mon = Cheese.CameraDeviceMonitor()
+        self.mon.connect ('added',   camera_plugged_cb,   self.cameras)
+        self.mon.connect ('removed', camera_unplugged_cb, self.cameras)
+        self.mon.coldplug()
+
+    def camera_plugged_cb (mon, dev, cameras):
+        print "found camera: '%s'" % dev.get_name()
+        cameras[dev.get_uuid()] = dev
+        camera_to_texture (dev)
+
+    def camera_unplugged_cb (mon, dev, cameras):
+        print "removing camera: '%s'" % dev.get_name()
+        del (cameras[dev.get_uuid()])
+
+    def camera_to_texture (dev):
+        fmt = dev.get_best_format()
+
+        texture = Clutter.Texture()
+        cam = Cheese.Camera.new(texture,
+                            dev.get_device_node (),
+                            fmt.width/4, fmt.height/4)
+        texture.set_size (fmt.width/4, fmt.height/4)
+        print "got camera: %s, texture: %s, %s" % (cam, texture, fmt)
+
+        cam.setup (dev.get_uuid())
+        cam.play()
+
+        return texture
 
 def sync_cb (bus, msg, o):
     print bus, msg, o
@@ -63,7 +98,7 @@ s.set_color (c)
 s.add_actor(tex)
 s.show_all()
 
-w.connect("destroy", lambda w: Gtk.main_quit())
+w.connect("destroy", lambda w: Clutter.main_quit())
 w.show_all()
 
 #xvi.set_parent(da.get_window())
