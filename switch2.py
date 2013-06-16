@@ -101,14 +101,6 @@ class App(object):
         self.vmixer.link (self.vmixerq)
         self.vmixerq.link (self.vsink_preview)
 
-#        black = Gst.ElementFactory.make ('videotestsrc', 'black bg')
-#        black = Gst.ElementFactory.make ('fakesrc', 'black bg')
-#        black.set_property('is-live', True)
-#        self.pipeline.add (black)
-#### XXX ver de cambiar segun res del preview
-#        caps = Gst.Caps.from_string('video/x-raw,format=YUV2,width=%d,height=240' % (320*INPUT_COUNT) )
-#        black.link_filtered(self.vmixer, caps)
-#        #black.link(self.vmixer)
 
         self.audio_inputs = []
         self.audio_queues = []
@@ -212,13 +204,11 @@ class App(object):
         self.video_tees.append(tee)
 
     def set_channel_volume(self, chanidx, volume):
-        print 'SET VOL CHAN ', chanidx, ' VOL: ', volume
         if volume > 1.5:
             volume = 1.5
         elif volume < 0:
             volume = 0
 
-        self.volumes[chanidx].set_property('volume', volume)
         try:
             self.volumes[chanidx].set_property('volume', volume)
         except IndexError:
@@ -231,7 +221,6 @@ class App(object):
         idx = 1 + (inputidx % (len(isel.pads)-1))
 
         newpad = isel.pads[idx]
-        print 'set active input : oldpad ', oldpad, ' newpad ', newpad, ' idx ', idx, ' newidx ', isel.pads.index(oldpad)
         if idx != isel.pads.index(oldpad):
             isel.set_property('active-pad', newpad)
 
