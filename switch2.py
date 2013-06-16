@@ -134,8 +134,6 @@ class App(object):
             self.add_video_source(props=[('device', dev)])
 
         for idx in range(INPUT_COUNT):
-            self.add_audio_source('autoaudiosrc' )
-            continue
             if idx==0:
                 self.add_audio_source('alsasrc' )
                 continue
@@ -147,7 +145,7 @@ class App(object):
             pad.set_property('ypos' , 0)
             pad.set_property('xpos' , 320*idx)
 
-    def add_audio_source(self, sourcename=None, props=None):
+    def add_audio_source (self, sourcename=None, props=None):
         name = sourcename or 'audiotestsrc'
         src = Gst.ElementFactory.make (name, None)
         q0 = Gst.ElementFactory.make ('queue2', None)
@@ -155,7 +153,7 @@ class App(object):
         volume = Gst.ElementFactory.make ('volume', None)
 
         fasink = Gst.ElementFactory.make ('fakesink', None)
-        fasink.set_property('sync', True)
+        fasink.set_property ('sync', True)
 
         level = Gst.ElementFactory.make ('level', None)
         level.set_property ("message", True)
@@ -169,9 +167,10 @@ class App(object):
 
         if props:
             for prop,val in props:
-                src.set_property(prop, val)
+                src.set_property (prop, val)
 
-        src.link (volume)
+        caps = Gst.Caps.from_string ('audio/x-raw,rate=44100,channels=1')
+        src.link_filtered (volume, caps)
         volume.link (tee)
         tee.link (q0)
         q0.link (self.amixer)
@@ -185,7 +184,7 @@ class App(object):
         self.volumes.append (volume)
         self.fasinks.append (fasink)
 
-    def add_video_source(self, sourcename=None, props=None):
+    def add_video_source (self, sourcename=None, props=None):
         name = sourcename or 'v4l2src'
         src = Gst.ElementFactory.make (name, None)
         q0 = Gst.ElementFactory.make ('queue2', None)
