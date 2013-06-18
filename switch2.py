@@ -7,7 +7,8 @@ from itertools import ifilter
 
 import gi
 from gi.repository import GObject
-gi.require_version('Gst', '1.0')
+#gi.require_version('Gst', '1.0')
+gi.require_version('Gst', '0.10')
 
 from gi.repository import Gst
 from gi.repository import Gtk
@@ -257,6 +258,7 @@ class App(object):
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
         bus.connect("message::element", self.bus_element_cb)
+        bus.connect("message", self.bus_message_cb)
         self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
 
 # XXX: devolver True, sino el timeout se destruye
@@ -298,6 +300,11 @@ class App(object):
         print ' AVGs ', avgs , ' dPEAKs ', dpeaks
         return True
 
+    def bus_message_cb (self, bus, msg):
+        if msg.type == Gst.MessageType.CLOCK_LOST:
+            self.pipeline.set_state (Gst.State.PAUSED)
+            self.pipeline.set_state (Gst.State.PLAYING)
+
     def bus_element_cb (self, bus, msg):
         s = msg.get_structure()
         if s.get_name() != "level":
@@ -315,9 +322,9 @@ if __name__ == "__main__":
 
     app.start()
 
-    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.NON_DEFAULT_PARAMS , 'debug1')
-    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.CAPS_DETAILS, 'debug1')
-
+#    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.NON_DEFAULT_PARAMS , 'debug1')
+##    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.CAPS_DETAILS, 'debug1')
+#
 
     Gtk.main()
     sys.exit(0)
