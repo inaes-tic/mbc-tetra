@@ -5,19 +5,15 @@ import time
 from collections import deque
 from itertools import ifilter
 
-import gi
-from gi.repository import GObject
-#gi.require_version('Gst', '1.0')
-gi.require_version('Gst', '0.10')
+import gobject
+import gst
+import glib
+import gtk
 
-from gi.repository import Gst
-from gi.repository import Gtk
-from gi.repository import GLib
+gobject.threads_init()
+gtk.gdk.threads_init()
 
-GObject.threads_init()
-Gst.init(sys.argv)
-
-INPUT_COUNT = 3
+INPUT_COUNT = 1
 # seconds
 WINDOW_LENGTH = 1.5
 UPDATE_INTERVAL = .25
@@ -26,23 +22,24 @@ MIN_ON_AIR_TIME = 3
 NOISE_BASELINE = -45
 SPEAK_UP_THRESHOLD = 3
 
-class MainWindow(Gtk.Window):
+class MainWindow(gtk.Window):
     def __init__(self, app):
-        Gtk.Window.__init__(self, title="test tetra 2")
-        self.connect('destroy', Gtk.main_quit)
+        gtk.Window.__init__(self)
+        self.set_title ("tetra")
+        self.connect('destroy', gtk.main_quit)
 
         self.app = app
 
-        box = self.box = Gtk.Box()
+        box = self.box = gtk.HBox()
         self.add(box)
 
-        self.toggle = Gtk.Button("Rotate input... ")
+        self.toggle = gtk.Button("Rotate input... ")
         box.add(self.toggle)
 
         sliders = []
         for idx in range(INPUT_COUNT):
-            adj = Gtk.Adjustment(1, 0, 1.5, 0.1, 0.25)
-            slider = Gtk.VScale()
+            adj = gtk.Adjustment(1, 0, 1.5, 0.1, 0.25)
+            slider = gtk.VScale()
 
             slider.set_adjustment(adj)
             slider.set_inverted(True)
@@ -52,9 +49,8 @@ class MainWindow(Gtk.Window):
 
         bars = []
         for idx in range(INPUT_COUNT):
-            bar = Gtk.ProgressBar()
-            bar.set_orientation(Gtk.Orientation.VERTICAL)
-            bar.set_inverted(True)
+            bar = gtk.ProgressBar()
+            bar.set_orientation(gtk.PROGRESS_BOTTOM_TO_TOP)
 
             bars.append(bar)
             box.add(bar)
@@ -65,55 +61,50 @@ class MainWindow(Gtk.Window):
         self.sliders = sliders
         self.bars = bars
 
-#        self.tid = GLib.timeout_add(100, self.update_levels)
-
-        bus = app.pipeline.get_bus()
-        bus.connect("message::element", self.bus_element_cb)
 
         self.toggle.connect('clicked', self.app.toggle)
 
-    def bus_element_cb (self, bus, msg):
-        s = msg.get_structure()
-        if s.get_name() != "level":
-            return
-        idx = self.app.levels.index(msg.src)
-        peak = s.get_value('peak')[0]
-        self.bars[idx].set_fraction( 1.0 + peak/20.0 )
-#        if idx == 0:
-#            print 'PEAK ', s.get_value('peak')[0] , ' AVG RMS ', s.get_value('rms')[0]
+        app.connect('level', self.update_levels)
 
-
-#    def update_levels(self):
-#        return True
+    def update_levels (self, app, idx, peak):
+        gtk.gdk.threads_enter ()
+        frac = 1.0 - peak/NOISE_BASELINE
+        if frac < 0:
+            frac = 0
+        self.bars[idx].set_fraction (frac)
+        gtk.gdk.threads_leave ()
+        return True
 
     def slider_cb(self, slider, chan):
         self.app.set_channel_volume (chan, slider.get_value())
 
-class App(object):
+class App(gobject.GObject):
     def __init__(self):
+        gobject.GObject.__init__(self)
         self.current_input = 0
         self.last_switch_time = time.time()
 
-        self.pipeline = pipeline = Gst.Pipeline.new('pipeline')
+        self.pipeline = pipeline = gst.Pipeline ('pipeline')
 
-        self.inputsel = Gst.ElementFactory.make ('input-selector', None)
-        self.vsink = Gst.ElementFactory.make ('autovideosink', None)
-        self.vsink_preview = Gst.ElementFactory.make ('autovideosink', None)
-        self.vmixer = Gst.ElementFactory.make ('videomixer', None)
-        self.vmixerq = Gst.ElementFactory.make ('queue2', 'vmixer Q')
-        #self.asink = Gst.ElementFactory.make ('autoaudiosink', None)
-        self.asink = Gst.ElementFactory.make ('fakesink', None)
+##        self.inputsel = gst.element_factory_make ('input-selector', None)
+##        self.vsink = gst.element_factory_make ('autovideosink', None)
+##        self.vsink_preview = gst.element_factory_make ('autovideosink', None)
+##        self.vmixer = gst.element_factory_make ('videomixer', None)
+##        self.vmixerq = gst.element_factory_make ('queue2', 'vmixer Q')
+
+        self.asink = gst.element_factory_make ('autoaudiosink', None)
+        #self.asink = gst.element_factory_make ('fakesink', None)
 
 
-        self.pipeline.add (self.vsink)
-        self.pipeline.add (self.vsink_preview)
-        self.pipeline.add (self.vmixer)
-        self.pipeline.add (self.vmixerq)
-        self.pipeline.add (self.inputsel)
-
-        self.inputsel.link (self.vsink)
-        self.vmixer.link (self.vmixerq)
-        self.vmixerq.link (self.vsink_preview)
+##        self.pipeline.add (self.vsink)
+##        self.pipeline.add (self.vsink_preview)
+##        self.pipeline.add (self.vmixer)
+##        self.pipeline.add (self.vmixerq)
+##        self.pipeline.add (self.inputsel)
+##
+##        self.inputsel.link (self.vsink)
+##        self.vmixer.link (self.vmixerq)
+##        self.vmixerq.link (self.vsink_preview)
 
 
         self.audio_inputs = []
@@ -130,24 +121,21 @@ class App(object):
         self.volumes = []
 
         self.levels = []
-        self.amixer = Gst.ElementFactory.make ('adder', None)
+        self.amixer = gst.element_factory_make ('adder', None)
 
         self.pipeline.add(self.amixer)
         self.pipeline.add(self.asink)
 
         self.amixer.link(self.asink)
 
-        for idx in range(INPUT_COUNT):
-            dev = '/dev/video%d' % idx
-            self.add_video_source(props=[('device', dev)])
+##        for idx in range(INPUT_COUNT):
+##            dev = '/dev/video%d' % idx
+##            self.add_video_source('uvch264_src', props=[('device', dev)])
+##            #self.add_video_source( props=[('device', dev)])
 
         for idx in range(INPUT_COUNT):
-            if idx==0:
-                self.add_audio_source('alsasrc' )
-                continue
-
-            freq = 440*(idx+1)
-            self.add_audio_source(props=[('freq', freq), ('is-live', True)])
+            self.add_audio_source('alsasrc', [('device', 'hw:1,0')] )
+            continue
 
 #        for idx,pad in enumerate(self.vmixer.sinkpads):
 #            pad.set_property('ypos' , 0)
@@ -159,19 +147,21 @@ class App(object):
         self.audio_peak.append (deque (maxlen=WINDOW_LENGTH * 10))
 
         name = sourcename or 'audiotestsrc'
-        src = Gst.ElementFactory.make (name, None)
-        q0 = Gst.ElementFactory.make ('queue2', None)
-        tee = Gst.ElementFactory.make ('tee', None)
-        volume = Gst.ElementFactory.make ('volume', None)
-
-        fasink = Gst.ElementFactory.make ('fakesink', None)
+        src = gst.element_factory_make (name, None)
+        q0 = gst.element_factory_make ('queue2', None)
+        q1 = gst.element_factory_make ('queue2', None)
+        tee = gst.element_factory_make ('tee', None)
+        volume = gst.element_factory_make ('volume', None)
+#
+        fasink = gst.element_factory_make ('fakesink', None)
         fasink.set_property ('sync', True)
-
-        level = Gst.ElementFactory.make ('level', None)
+#
+        level = gst.element_factory_make ('level', None)
         level.set_property ("message", True)
 
         self.pipeline.add (src)
         self.pipeline.add (q0)
+        self.pipeline.add (q1)
         self.pipeline.add (tee)
         self.pipeline.add (volume)
         self.pipeline.add (fasink)
@@ -181,16 +171,18 @@ class App(object):
             for prop,val in props:
                 src.set_property (prop, val)
 
-        caps = Gst.Caps.from_string ('audio/x-raw,rate=44100,channels=1')
-        src.link_filtered (volume, caps)
+        caps = gst.Caps ('audio/x-raw-int,rate=32000,channels=2')
+        src.link_filtered (q0, caps)
+        q0.link (volume)
         volume.link (tee)
-        tee.link (q0)
-        q0.link (self.amixer)
-        tee.link (level)
+        tee.link_filtered(self.amixer, caps)
+        tee.link (q1)
+        q1.link (level)
         level.link(fasink)
 
         self.audio_inputs.append (src)
         self.audio_queues.append (q0)
+        self.audio_queues.append (q1)
         self.audio_tees.append (tee)
         self.levels.append (level)
         self.volumes.append (volume)
@@ -198,30 +190,27 @@ class App(object):
 
     def add_video_source (self, sourcename=None, props=None):
         name = sourcename or 'v4l2src'
-        src = Gst.ElementFactory.make (name, None)
-        q0 = Gst.ElementFactory.make ('queue2', None)
-        q1 = Gst.ElementFactory.make ('queue2', None)
-        tee = Gst.ElementFactory.make ('tee', None)
+        src = gst.element_factory_make (name, None)
+        q0 = gst.element_factory_make ('queue2', None)
+        q1 = gst.element_factory_make ('queue2', None)
 
         self.pipeline.add (src)
         self.pipeline.add (q0)
         self.pipeline.add (q1)
-        self.pipeline.add (tee)
 
         if props:
             for prop,val in props:
                 src.set_property(prop, val)
 
-# XXX: aca usar el pad de preview de uvch264 en lugar de un tee con lo mismo
-        src.link(tee)
-        tee.link(q0)
-        tee.link(q1)
+# XXX:
+        caps = gst.Caps ('video/x-raw-yuv,width=640,height=480,rate=30')
+        src.link_pads_filtered ('vidsrc', q0, 'sink', caps)
+        src.link_pads_filtered ('vfsrc', q1, 'sink', caps)
         q0.link(self.inputsel)
         q1.link(self.vmixer)
         self.video_inputs.append(src)
         self.video_queues.append(q0)
         self.video_queues.append(q1)
-        self.video_tees.append(tee)
 
     def set_channel_volume(self, chanidx, volume):
         if volume > 1.5:
@@ -254,15 +243,19 @@ class App(object):
         self.set_active_input(i)
 
     def start (self):
-        self.pipeline.set_state (Gst.State.PLAYING)
+        self.pipeline.set_state (gst.STATE_PLAYING)
         bus = self.pipeline.get_bus()
-        bus.add_signal_watch()
-        bus.connect("message::element", self.bus_element_cb)
-        bus.connect("message", self.bus_message_cb)
-        self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
+# signals are kind of broken on gst 0.10
+# https://bugzilla.gnome.org/show_bug.cgi?id=631901
+#        bus.add_signal_watch()
+#        bus.connect("message::element", self.bus_element_cb)
+#        bus.connect("message", self.bus_message_cb)
+        self.tid = glib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
+        self.watch_id = bus.add_watch (self.bus_element_cb, None);
 
 # XXX: devolver True, sino el timeout se destruye
     def process_levels (self):
+        return True
         now = time.time()
         def do_switch (src):
             if src == self.current_input:
@@ -300,18 +293,32 @@ class App(object):
         print ' AVGs ', avgs , ' dPEAKs ', dpeaks
         return True
 
-    def bus_message_cb (self, bus, msg):
-        if msg.type == Gst.MessageType.CLOCK_LOST:
-            self.pipeline.set_state (Gst.State.PAUSED)
-            self.pipeline.set_state (Gst.State.PLAYING)
 
-    def bus_element_cb (self, bus, msg):
-        s = msg.get_structure()
-        if s.get_name() != "level":
-            return
-        idx = self.levels.index (msg.src)
-        self.audio_avg[idx].append (s.get_value ('rms')[0])
-        self.audio_peak[idx].append (s.get_value ('peak')[0])
+    def bus_element_cb (self, bus, msg, arg=None):
+        if msg.type == gst.MESSAGE_CLOCK_LOST:
+            self.pipeline.set_state (gst.STATE_PAUSED)
+            self.pipeline.set_state (gst.STATE_PLAYING)
+            return True
+
+        if msg.type != gst.MESSAGE_ELEMENT:
+            return True
+        if msg.structure is None:
+            return True
+
+        s = msg.structure
+        if s.get_name() == "level":
+            idx = self.levels.index (msg.src)
+            #print 'RMS ', s['rms']
+            self.audio_avg[idx].append (s['rms'][0])
+            self.audio_peak[idx].append (s['peak'][0])
+            self.emit('level', idx, s['peak'][0])
+        return True
+
+###
+gobject.type_register(App)
+# level: chanidx, level
+gobject.signal_new("level", App, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (int,float))
+###
 
 if __name__ == "__main__":
 
@@ -321,11 +328,8 @@ if __name__ == "__main__":
     w2.show_all()
 
     app.start()
+    gst.DEBUG_BIN_TO_DOT_FILE(app.pipeline, gst.DEBUG_GRAPH_SHOW_NON_DEFAULT_PARAMS | gst.DEBUG_GRAPH_SHOW_MEDIA_TYPE | gst.DEBUG_GRAPH_SHOW_CAPS_DETAILS, 'debug1')
 
-#    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.NON_DEFAULT_PARAMS , 'debug1')
-##    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.CAPS_DETAILS, 'debug1')
-#
-
-    Gtk.main()
+    gtk.main()
     sys.exit(0)
 
