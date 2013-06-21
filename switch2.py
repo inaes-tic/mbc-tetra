@@ -22,6 +22,17 @@ MIN_ON_AIR_TIME = 3
 NOISE_BASELINE = -45
 SPEAK_UP_THRESHOLD = 3
 
+PREVIEW_CAPS = gst.Caps ('video/x-raw-yuv,width=640,height=480,rate=30')
+H264_CAPS = gst.Caps ('video/x-h264,width=1280,heigth=720,framerate=30/1,profile=high')
+#H264_CAPS = gst.Caps ('video/x-h264,width=1920,heigth=1080,framerate=30/1,profile=high')
+INITIAL_INPUT_PROPS = [
+                ('initial-bitrate', 12000000),
+                ('average-bitrate', 12000000),
+                ('peak-bitrate', 12000000),
+# broadcast
+                ('usage-type', 2),
+]
+
 class MainWindow(gtk.Window):
     def __init__(self, app):
         gtk.Window.__init__(self)
@@ -86,25 +97,39 @@ class App(gobject.GObject):
 
         self.pipeline = pipeline = gst.Pipeline ('pipeline')
 
-##        self.inputsel = gst.element_factory_make ('input-selector', None)
-##        self.vsink = gst.element_factory_make ('autovideosink', None)
-##        self.vsink_preview = gst.element_factory_make ('autovideosink', None)
-##        self.vmixer = gst.element_factory_make ('videomixer', None)
-##        self.vmixerq = gst.element_factory_make ('queue2', 'vmixer Q')
+        self.inputsel = gst.element_factory_make ('input-selector', None)
+        #self.vsink = gst.element_factory_make ('autovideosink', None)
+
+        self.vsink = gst.element_factory_make ('tcpserversink', None)
+        self.vsink.set_property('host', '127.0.0.1')
+        self.vsink.set_property('port', 9078)
+        self.vpay = gst.element_factory_make ('mp4mux', None)
+        parser = gst.element_factory_make ('h264parse', None)
+        parser.set_property ('config-interval',2)
+        self.pipeline.add(parser)
+        self.vpay.set_property('streamable', True)
+        self.vpay.set_property('fragment-duration', 100)
+
+        self.vsink_preview = gst.element_factory_make ('autovideosink', None)
+        self.vmixer = gst.element_factory_make ('videomixer', None)
+        self.vmixerq = gst.element_factory_make ('queue2', 'vmixer Q')
 
         self.asink = gst.element_factory_make ('autoaudiosink', None)
         #self.asink = gst.element_factory_make ('fakesink', None)
 
 
-##        self.pipeline.add (self.vsink)
-##        self.pipeline.add (self.vsink_preview)
-##        self.pipeline.add (self.vmixer)
-##        self.pipeline.add (self.vmixerq)
-##        self.pipeline.add (self.inputsel)
-##
-##        self.inputsel.link (self.vsink)
-##        self.vmixer.link (self.vmixerq)
-##        self.vmixerq.link (self.vsink_preview)
+        self.pipeline.add (self.vsink)
+        self.pipeline.add (self.vpay)
+        self.pipeline.add (self.vsink_preview)
+        self.pipeline.add (self.vmixer)
+        self.pipeline.add (self.vmixerq)
+        self.pipeline.add (self.inputsel)
+
+        self.inputsel.link_filtered (parser, H264_CAPS)
+        parser.link(self.vpay)
+        self.vpay.link (self.vsink)
+        self.vmixer.link (self.vmixerq)
+        self.vmixerq.link (self.vsink_preview)
 
 
         self.audio_inputs = []
@@ -128,13 +153,21 @@ class App(gobject.GObject):
 
         self.amixer.link(self.asink)
 
-##        for idx in range(INPUT_COUNT):
-##            dev = '/dev/video%d' % idx
-##            self.add_video_source('uvch264_src', props=[('device', dev)])
-##            #self.add_video_source( props=[('device', dev)])
+        for idx in range(INPUT_COUNT):
+            dev = '/dev/video%d' % idx
+            props = [
+                ('device', dev),
+                ('initial-bitrate', 6000000),
+                ('average-bitrate', 6000000),
+                ('peak-bitrate', 12000000),
+# broadcast
+                ('usage-type', 2),
+            ]
+            self.add_video_source('uvch264_src', props)
 
         for idx in range(INPUT_COUNT):
-            self.add_audio_source('alsasrc', [('device', 'hw:1,0')] )
+### XXX: hw:0 interno en pc, no asi en bbb.
+            self.add_audio_source('alsasrc', [('device', 'hw:%d,0' % (idx+1))] )
             continue
 
 #        for idx,pad in enumerate(self.vmixer.sinkpads):
@@ -203,11 +236,14 @@ class App(gobject.GObject):
                 src.set_property(prop, val)
 
 # XXX:
-        caps = gst.Caps ('video/x-raw-yuv,width=640,height=480,rate=30')
-        src.link_pads_filtered ('vidsrc', q0, 'sink', caps)
-        src.link_pads_filtered ('vfsrc', q1, 'sink', caps)
-        q0.link(self.inputsel)
-        q1.link(self.vmixer)
+        #q0.set_property ('max-size-time', int(0.03*gst.SECOND))
+        q0.set_property ('max-size-time', int(3*gst.SECOND))
+        src.link_pads_filtered ('vidsrc', q0, 'sink', H264_CAPS)
+
+        src.link_pads_filtered ('vfsrc', q1, 'sink', PREVIEW_CAPS)
+
+        q0.link (self.inputsel)
+        q1.link (self.vmixer)
         self.video_inputs.append(src)
         self.video_queues.append(q0)
         self.video_queues.append(q1)
@@ -226,12 +262,12 @@ class App(gobject.GObject):
     def set_active_input(self, inputidx):
         isel = self.inputsel
         oldpad = isel.get_property ('active-pad')
-        # pads[0] output, rest input sinks.
-        idx = 1 + (inputidx % (len(isel.pads)-1))
+        pads = list(isel.sink_pads())
+        idx = inputidx % len(pads)
 
-        newpad = isel.pads[idx]
+        newpad = pads[idx]
         self.current_input = inputidx
-        if idx != isel.pads.index(oldpad):
+        if idx != pads.index(oldpad):
             isel.set_property('active-pad', newpad)
 
     def toggle (self, *args):
@@ -239,19 +275,22 @@ class App(gobject.GObject):
         s = e.get_property ('active-pad')
         # pads[0] output, rest input sinks.
         # set_active_input() uses 0..N, so this works out to switch to the next
-        i = e.pads.index(s)
+        i = list(e.pads()).index(s)
         self.set_active_input(i)
 
     def start (self):
         self.pipeline.set_state (gst.STATE_PLAYING)
         bus = self.pipeline.get_bus()
-# signals are kind of broken on gst 0.10
-# https://bugzilla.gnome.org/show_bug.cgi?id=631901
-#        bus.add_signal_watch()
-#        bus.connect("message::element", self.bus_element_cb)
-#        bus.connect("message", self.bus_message_cb)
+        bus.add_signal_watch()
+        bus.connect("message::element", self.bus_element_cb)
+        bus.connect("message", self.bus_message_cb)
+
+        for src in self.video_inputs:
+            src.emit('start-capture')
+            for prop,val in INITIAL_INPUT_PROPS:
+                src.set_property(prop, val)
+
         self.tid = glib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
-        self.watch_id = bus.add_watch (self.bus_element_cb, None);
 
 # XXX: devolver True, sino el timeout se destruye
     def process_levels (self):
@@ -295,13 +334,6 @@ class App(gobject.GObject):
 
 
     def bus_element_cb (self, bus, msg, arg=None):
-        if msg.type == gst.MESSAGE_CLOCK_LOST:
-            self.pipeline.set_state (gst.STATE_PAUSED)
-            self.pipeline.set_state (gst.STATE_PLAYING)
-            return True
-
-        if msg.type != gst.MESSAGE_ELEMENT:
-            return True
         if msg.structure is None:
             return True
 
@@ -313,6 +345,33 @@ class App(gobject.GObject):
             self.audio_peak[idx].append (s['peak'][0])
             self.emit('level', idx, s['peak'][0])
         return True
+
+    def bus_message_cb (self, bus, msg, arg=None):
+        if msg.type == gst.MESSAGE_CLOCK_LOST:
+            self.pipeline.set_state (gst.STATE_PAUSED)
+            self.pipeline.set_state (gst.STATE_PLAYING)
+#        if msg.src not in self.video_inputs:
+#            return
+##         if msg.type == gst.MESSAGE_ERROR:
+##             self.pipeline.set_state (gst.STATE_PAUSED)
+##             for src in self.video_inputs:
+##                 src.set_state (gst.STATE_NULL)
+##                 for q in self.video_queues:
+##                     src.unlink(q)
+##                 self.pipeline.remove (src)
+            #self.pipeline.set_state (gst.STATE_NULL)
+            #self.pipeline.set_state (gst.STATE_PLAYING)
+
+            print ''
+            print ' MSG src  ', msg.src , ' in src ', msg.src in self.video_inputs
+            print ' MSG type ', msg.type
+            if msg.structure:
+                if msg.structure.get_name() == 'level':
+                    return
+                print ' MSG str ', msg.structure.get_name()
+                print ' MSG con ', msg.structure.to_string()
+        return True
+
 
 ###
 gobject.type_register(App)
@@ -328,6 +387,7 @@ if __name__ == "__main__":
     w2.show_all()
 
     app.start()
+    #gst.DEBUG_BIN_TO_DOT_FILE(app.pipeline, gst.DEBUG_GRAPH_SHOW_NON_DEFAULT_PARAMS | gst.DEBUG_GRAPH_SHOW_MEDIA_TYPE , 'debug1')
     gst.DEBUG_BIN_TO_DOT_FILE(app.pipeline, gst.DEBUG_GRAPH_SHOW_NON_DEFAULT_PARAMS | gst.DEBUG_GRAPH_SHOW_MEDIA_TYPE | gst.DEBUG_GRAPH_SHOW_CAPS_DETAILS, 'debug1')
 
     gtk.main()
