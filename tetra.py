@@ -7,7 +7,7 @@ from itertools import ifilter
 
 import gi
 from gi.repository import GObject
-gi.require_version('Gst', '1.0')
+gi.require_version('Gst', '0.10')
 
 from gi.repository import Gst
 from gi.repository import Gtk
@@ -133,7 +133,7 @@ class App(GObject.GObject):
         #self.asink = Gst.ElementFactory.make ('fakesink', None)
 
 
-#        self.pipeline.add (self.vsink)
+        self.pipeline.add (self.vsink)
         self.pipeline.add (self.vpay)
 #        self.pipeline.add (self.vsink_preview)
 #        self.pipeline.add (self.vmixer)
@@ -179,7 +179,8 @@ class App(GObject.GObject):
                 ('usage-type', 2),
             ]
             #self.add_video_source('uvch264_src', props)
-            self.add_video_source('fakesrc', None)
+            #self.add_video_source('fakesrc', None)
+            self.add_video_source('v4l2src', [('device', dev)])
 
         for idx in range(INPUT_COUNT):
 ### XXX: hw:0 interno en pc, no asi en bbb.
@@ -268,7 +269,7 @@ class App(GObject.GObject):
     def set_active_input(self, inputidx):
         isel = self.inputsel
         oldpad = isel.get_property ('active-pad')
-        pads = list(isel.sink_pads())
+        pads = isel.sinkpads
         idx = inputidx % len(pads)
 
         newpad = pads[idx]
@@ -281,13 +282,15 @@ class App(GObject.GObject):
         s = e.get_property ('active-pad')
         # pads[0] output, rest input sinks.
         # set_active_input() uses 0..N, so this works out to switch to the next
-        i = list(e.pads()).index(s)
+        i = e.pads.index(s)
         self.set_active_input(i)
 
     def start (self):
         bus = self.pipeline.get_bus ()
-        bus.add_signal_watch ()
-        bus.connect("message", self.bus_message_cb)
+        self.watch_id = bus.add_watch_full (GLib.PRIORITY_DEFAULT, self.bus_message_cb, None);
+
+        #bus.add_signal_watch ()
+        #bus.connect("message", self.bus_message_cb)
         self.pipeline.set_state (Gst.State.PLAYING)
 
 ## XXX: solo para uvch264
@@ -382,7 +385,7 @@ if __name__ == "__main__":
 
     app.start()
 
-    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.CAPS_DETAILS, 'debug1')
+    #Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.CAPS_DETAILS, 'debug1')
 
     Gtk.main()
     sys.exit(0)
