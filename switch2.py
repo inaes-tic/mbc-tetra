@@ -13,7 +13,7 @@ import gtk
 gobject.threads_init()
 gtk.gdk.threads_init()
 
-INPUT_COUNT = 1
+INPUT_COUNT = 3
 # seconds
 WINDOW_LENGTH = 1.5
 UPDATE_INTERVAL = .25
@@ -23,8 +23,12 @@ NOISE_BASELINE = -45
 SPEAK_UP_THRESHOLD = 3
 
 PREVIEW_CAPS = gst.Caps ('video/x-raw-yuv,width=640,height=480,rate=30')
-H264_CAPS = gst.Caps ('video/x-h264,width=1280,heigth=720,framerate=30/1,profile=high')
+#H264_CAPS = gst.Caps ('video/x-h264,width=1280,heigth=720,framerate=30/1,profile=high')
 #H264_CAPS = gst.Caps ('video/x-h264,width=1920,heigth=1080,framerate=30/1,profile=high')
+PREVIEW_CAPS = gst.Caps ('video/x-raw-yuv,width=320,height=240,rate=30')
+H264_CAPS = gst.Caps ('video/x-h264,width=960,framerate=30/1,profile=high')
+
+AUDIO_CAPS = gst.Caps ('audio/x-raw,format=S16LE,rate=32000,channels=2')
 INITIAL_INPUT_PROPS = [
                 ('initial-bitrate', 12000000),
                 ('average-bitrate', 12000000),
@@ -97,39 +101,39 @@ class App(gobject.GObject):
 
         self.pipeline = pipeline = gst.Pipeline ('pipeline')
 
-        self.inputsel = gst.element_factory_make ('input-selector', None)
-        #self.vsink = gst.element_factory_make ('autovideosink', None)
+##        self.inputsel = gst.element_factory_make ('input-selector', None)
+##        #self.vsink = gst.element_factory_make ('autovideosink', None)
+##
+##        self.vsink = gst.element_factory_make ('tcpserversink', None)
+##        self.vsink.set_property('host', '127.0.0.1')
+##        self.vsink.set_property('port', 9078)
+##        self.vpay = gst.element_factory_make ('mp4mux', None)
+##        parser = gst.element_factory_make ('h264parse', None)
+##        parser.set_property ('config-interval',2)
+##        self.pipeline.add(parser)
+##        self.vpay.set_property('streamable', True)
+##        self.vpay.set_property('fragment-duration', 100)
 
-        self.vsink = gst.element_factory_make ('tcpserversink', None)
-        self.vsink.set_property('host', '127.0.0.1')
-        self.vsink.set_property('port', 9078)
-        self.vpay = gst.element_factory_make ('mp4mux', None)
-        parser = gst.element_factory_make ('h264parse', None)
-        parser.set_property ('config-interval',2)
-        self.pipeline.add(parser)
-        self.vpay.set_property('streamable', True)
-        self.vpay.set_property('fragment-duration', 100)
-
-        self.vsink_preview = gst.element_factory_make ('autovideosink', None)
-        self.vmixer = gst.element_factory_make ('videomixer', None)
-        self.vmixerq = gst.element_factory_make ('queue2', 'vmixer Q')
+#        self.vsink_preview = gst.element_factory_make ('autovideosink', None)
+#        self.vmixer = gst.element_factory_make ('videomixer', None)
+#        self.vmixerq = gst.element_factory_make ('queue2', 'vmixer Q')
 
         self.asink = gst.element_factory_make ('autoaudiosink', None)
         #self.asink = gst.element_factory_make ('fakesink', None)
 
 
-        self.pipeline.add (self.vsink)
-        self.pipeline.add (self.vpay)
-        self.pipeline.add (self.vsink_preview)
-        self.pipeline.add (self.vmixer)
-        self.pipeline.add (self.vmixerq)
-        self.pipeline.add (self.inputsel)
+##         self.pipeline.add (self.vsink)
+##         self.pipeline.add (self.vpay)
+##        self.pipeline.add (self.inputsel)
+#        self.pipeline.add (self.vsink_preview)
+#        self.pipeline.add (self.vmixer)
+#        self.pipeline.add (self.vmixerq)
 
-        self.inputsel.link_filtered (parser, H264_CAPS)
-        parser.link(self.vpay)
-        self.vpay.link (self.vsink)
-        self.vmixer.link (self.vmixerq)
-        self.vmixerq.link (self.vsink_preview)
+##        self.inputsel.link_filtered (parser, H264_CAPS)
+##        parser.link(self.vpay)
+##        self.vpay.link (self.vsink)
+#        self.vmixer.link (self.vmixerq)
+#        self.vmixerq.link (self.vsink_preview)
 
 
         self.audio_inputs = []
@@ -147,16 +151,15 @@ class App(gobject.GObject):
 
         self.levels = []
         self.amixer = gst.element_factory_make ('adder', None)
-
         self.pipeline.add(self.amixer)
         self.pipeline.add(self.asink)
-
         self.amixer.link(self.asink)
 
         for idx in range(INPUT_COUNT):
             dev = '/dev/video%d' % idx
             props = [
                 ('device', dev),
+                ('auto-start', True),
                 ('initial-bitrate', 6000000),
                 ('average-bitrate', 6000000),
                 ('peak-bitrate', 12000000),
@@ -166,13 +169,10 @@ class App(gobject.GObject):
             self.add_video_source('uvch264_src', props)
 
         for idx in range(INPUT_COUNT):
-### XXX: hw:0 interno en pc, no asi en bbb.
+### XXX: hw:0 interno en pc
             self.add_audio_source('alsasrc', [('device', 'hw:%d,0' % (idx+1))] )
             continue
 
-#        for idx,pad in enumerate(self.vmixer.sinkpads):
-#            pad.set_property('ypos' , 0)
-#            pad.set_property('xpos' , 320*idx)
 
     def add_audio_source (self, sourcename=None, props=None):
         # 10 samples per second
@@ -225,28 +225,35 @@ class App(gobject.GObject):
         name = sourcename or 'v4l2src'
         src = gst.element_factory_make (name, None)
         q0 = gst.element_factory_make ('queue2', None)
-        q1 = gst.element_factory_make ('queue2', None)
+        parse = gst.element_factory_make ('h264parse', None)
+        dec = gst.element_factory_make ('ffdec_h264', None)
+##        q1 = gst.element_factory_make ('queue2', None)
+        sink = gst.element_factory_make ('autovideosink', None)
 
         self.pipeline.add (src)
+        self.pipeline.add (sink)
         self.pipeline.add (q0)
-        self.pipeline.add (q1)
+        self.pipeline.add (parse)
+        self.pipeline.add (dec)
 
         if props:
             for prop,val in props:
                 src.set_property(prop, val)
 
 # XXX:
-        #q0.set_property ('max-size-time', int(0.03*gst.SECOND))
         q0.set_property ('max-size-time', int(3*gst.SECOND))
         src.link_pads_filtered ('vidsrc', q0, 'sink', H264_CAPS)
+        q0.link(parse)
+        parse.link(dec)
+        dec.link(sink)
 
-        src.link_pads_filtered ('vfsrc', q1, 'sink', PREVIEW_CAPS)
+##        src.link_pads_filtered ('vfsrc', q1, 'sink', PREVIEW_CAPS)
 
-        q0.link (self.inputsel)
-        q1.link (self.vmixer)
-        self.video_inputs.append(src)
-        self.video_queues.append(q0)
-        self.video_queues.append(q1)
+##        q0.link (self.inputsel)
+##        q1.link (sink)
+##        self.video_inputs.append(src)
+##        self.video_queues.append(q0)
+##        self.video_queues.append(q1)
 
     def set_channel_volume(self, chanidx, volume):
         if volume > 1.5:
@@ -286,9 +293,9 @@ class App(gobject.GObject):
         bus.connect("message", self.bus_message_cb)
 
         for src in self.video_inputs:
-            src.emit('start-capture')
             for prop,val in INITIAL_INPUT_PROPS:
                 src.set_property(prop, val)
+            time.sleep(0.5)
 
         self.tid = glib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
 
