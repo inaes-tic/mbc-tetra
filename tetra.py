@@ -141,6 +141,7 @@ class App(GObject.GObject):
         self.pipeline.add (self.inputsel)
 
         self.inputsel.link_filtered (parser, H264_CAPS)
+        parser.set ('config-interval', 1)
         parser.link(self.vpay)
         self.vpay.link (self.vsink)
 #        self.vmixer.link (self.vmixerq)
@@ -276,6 +277,12 @@ class App(GObject.GObject):
         self.current_input = inputidx
         if idx != pads.index(oldpad):
             isel.set_property('active-pad', newpad)
+            s = gst.Structure ('GstForceKeyUnit')
+            s.set_value ('running-time', gst.CLOCK_TIME_NONE)
+            s.set_value ('count', 0)
+            s.set_value ('all-headers', True)
+            ev = gst.event_new_custom (gst.EVENT_CUSTOM_UPSTREAM, s)
+            self.video_inputs.send_event (ev)
 
     def toggle (self, *args):
         e = self.inputsel

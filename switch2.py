@@ -26,7 +26,7 @@ PREVIEW_CAPS = gst.Caps ('video/x-raw-yuv,width=640,height=480,rate=30')
 #H264_CAPS = gst.Caps ('video/x-h264,width=1280,heigth=720,framerate=30/1,profile=high')
 #H264_CAPS = gst.Caps ('video/x-h264,width=1920,heigth=1080,framerate=30/1,profile=high')
 PREVIEW_CAPS = gst.Caps ('video/x-raw-yuv,width=320,height=240,rate=30')
-H264_CAPS = gst.Caps ('video/x-h264,width=960,framerate=30/1,profile=high')
+H264_CAPS = gst.Caps ('video/x-h264,width=640,framerate=30/1,profile=high')
 
 AUDIO_CAPS = gst.Caps ('audio/x-raw,format=S16LE,rate=32000,channels=2')
 INITIAL_INPUT_PROPS = [
@@ -96,13 +96,25 @@ class MainWindow(gtk.Window):
 class App(gobject.GObject):
     def __init__(self):
         gobject.GObject.__init__(self)
-        self.current_input = 0
+        self.current_input = INPUT_COUNT - 1
         self.last_switch_time = time.time()
 
         self.pipeline = pipeline = gst.Pipeline ('pipeline')
 
-##        self.inputsel = gst.element_factory_make ('input-selector', None)
-##        #self.vsink = gst.element_factory_make ('autovideosink', None)
+        self.inputsel = gst.element_factory_make ('input-selector', None)
+        self.pipeline.add (self.inputsel)
+        #self.vsink = gst.element_factory_make ('fakesink', None)
+        self.vsink = gst.element_factory_make ('autovideosink', None)
+        self.pipeline.add (self.vsink)
+        parse = gst.element_factory_make ('h264parse', None)
+        parse.set_property ('config-interval', 1)
+        dec = gst.element_factory_make ('ffdec_h264', None)
+        self.pipeline.add (parse)
+        self.pipeline.add (dec)
+        self.inputsel.link(parse)
+        parse.link(dec)
+        dec.link(self.vsink)
+
 ##
 ##        self.vsink = gst.element_factory_make ('tcpserversink', None)
 ##        self.vsink.set_property('host', '127.0.0.1')
@@ -122,9 +134,7 @@ class App(gobject.GObject):
         #self.asink = gst.element_factory_make ('fakesink', None)
 
 
-##         self.pipeline.add (self.vsink)
 ##         self.pipeline.add (self.vpay)
-##        self.pipeline.add (self.inputsel)
 #        self.pipeline.add (self.vsink_preview)
 #        self.pipeline.add (self.vmixer)
 #        self.pipeline.add (self.vmixerq)
@@ -163,6 +173,8 @@ class App(gobject.GObject):
                 ('initial-bitrate', 6000000),
                 ('average-bitrate', 6000000),
                 ('peak-bitrate', 12000000),
+                ('iframe-period', 100),
+                ('ltr-buffer-size', 100),
 # broadcast
                 ('usage-type', 2),
             ]
@@ -225,14 +237,17 @@ class App(gobject.GObject):
         name = sourcename or 'v4l2src'
         src = gst.element_factory_make (name, None)
         q0 = gst.element_factory_make ('queue2', None)
+        tee = gst.element_factory_make ('tee', None)
         parse = gst.element_factory_make ('h264parse', None)
         dec = gst.element_factory_make ('ffdec_h264', None)
-##        q1 = gst.element_factory_make ('queue2', None)
+        q1 = gst.element_factory_make ('queue2', None)
         sink = gst.element_factory_make ('autovideosink', None)
 
         self.pipeline.add (src)
         self.pipeline.add (sink)
         self.pipeline.add (q0)
+        self.pipeline.add (q1)
+        self.pipeline.add (tee)
         self.pipeline.add (parse)
         self.pipeline.add (dec)
 
@@ -243,7 +258,10 @@ class App(gobject.GObject):
 # XXX:
         q0.set_property ('max-size-time', int(3*gst.SECOND))
         src.link_pads_filtered ('vidsrc', q0, 'sink', H264_CAPS)
-        q0.link(parse)
+        q0.link(tee)
+        tee.link(parse)
+        tee.link(q1)
+        q1.link(self.inputsel)
         parse.link(dec)
         dec.link(sink)
 
@@ -251,7 +269,7 @@ class App(gobject.GObject):
 
 ##        q0.link (self.inputsel)
 ##        q1.link (sink)
-##        self.video_inputs.append(src)
+        self.video_inputs.append(src)
 ##        self.video_queues.append(q0)
 ##        self.video_queues.append(q1)
 
@@ -274,15 +292,22 @@ class App(gobject.GObject):
 
         newpad = pads[idx]
         self.current_input = inputidx
+        print 'SET ACTIVE INPUT inputidx: ', inputidx, ' idx: ', idx
         if idx != pads.index(oldpad):
             isel.set_property('active-pad', newpad)
+            s = gst.Structure ('GstForceKeyUnit')
+            s.set_value ('running-time', -1)
+            s.set_value ('count', 0)
+            s.set_value ('all-headers', True)
+            ev = gst.event_new_custom (gst.EVENT_CUSTOM_UPSTREAM, s)
+            self.video_inputs[idx].send_event (ev)
 
     def toggle (self, *args):
         e = self.inputsel
         s = e.get_property ('active-pad')
         # pads[0] output, rest input sinks.
         # set_active_input() uses 0..N, so this works out to switch to the next
-        i = list(e.pads()).index(s)
+        i = 1 + list(e.pads()).index(s)
         self.set_active_input(i)
 
     def start (self):
@@ -301,7 +326,6 @@ class App(gobject.GObject):
 
 # XXX: devolver True, sino el timeout se destruye
     def process_levels (self):
-        return True
         now = time.time()
         def do_switch (src):
             if src == self.current_input:
