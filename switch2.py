@@ -37,47 +37,38 @@ INITIAL_INPUT_PROPS = [
                 ('usage-type', 2),
 ]
 
-class MainWindow(gtk.Window):
+class MainWindow(object):
     def __init__(self, app):
-        gtk.Window.__init__(self)
-        self.set_title ("tetra")
-        self.connect('destroy', gtk.main_quit)
+        self.builder = gtk.Builder ()
+        self.builder.add_from_file ('main_ui.glade')
+
+        self.window = self.builder.get_object('tetra_main')
+        self.window.connect ("destroy", lambda app: gtk.main_quit())
+
+        self.volume_box = self.builder.get_object('volume_controls')
 
         self.app = app
 
-        box = self.box = gtk.HBox()
-        self.add(box)
-
-        self.toggle = gtk.Button("Rotate input... ")
-        box.add(self.toggle)
-
         sliders = []
-        for idx in range(INPUT_COUNT):
-            adj = gtk.Adjustment(1, 0, 1.5, 0.1, 0.25)
-            slider = gtk.VScale()
-
-            slider.set_adjustment(adj)
-            slider.set_inverted(True)
-            slider.set_digits(1)
-            sliders.append(slider)
-            box.add(slider)
-
         bars = []
         for idx in range(INPUT_COUNT):
-            bar = gtk.ProgressBar()
-            bar.set_orientation(gtk.PROGRESS_BOTTOM_TO_TOP)
+            builder = gtk.Builder ()
+            builder.add_objects_from_file ('volume_control.glade', ['volume_control', 'volume_adj'])
+            vc = builder.get_object ('volume_control')
+            self.volume_box.add (vc)
 
-            bars.append(bar)
-            box.add(bar)
+            slider = builder.get_object ('volume')
+            slider.connect ("value-changed", self.slider_cb, idx)
+            sliders.append (slider)
 
-        for idx in range(INPUT_COUNT):
-            sliders[idx].connect("value-changed", self.slider_cb, idx)
+            bar = builder.get_object ('peak')
+            bars.append (bar)
+
+            mute = builder.get_object ('mute')
+            mute.connect ("toggled", self.mute_cb, idx)
 
         self.sliders = sliders
         self.bars = bars
-
-
-        self.toggle.connect('clicked', self.app.toggle)
 
         app.connect('level', self.update_levels)
 
@@ -90,8 +81,11 @@ class MainWindow(gtk.Window):
         gtk.gdk.threads_leave ()
         return True
 
+    def mute_cb(self, toggle, chan):
+        self.app.mute_channel (chan, toggle.get_active())
+
     def slider_cb(self, slider, chan):
-        self.app.set_channel_volume (chan, slider.get_value())
+        self.app.set_channel_volume (chan, slider.get_value()/100.0)
 
 class App(gobject.GObject):
     def __init__(self):
@@ -273,6 +267,12 @@ class App(gobject.GObject):
 ##        self.video_queues.append(q0)
 ##        self.video_queues.append(q1)
 
+    def mute_channel (self, chanidx, mute):
+        try:
+            self.volumes[chanidx].set_property('mute', mute)
+        except IndexError:
+            pass
+
     def set_channel_volume(self, chanidx, volume):
         if volume > 1.5:
             volume = 1.5
@@ -415,7 +415,7 @@ if __name__ == "__main__":
     app = App()
 
     w2 = MainWindow(app)
-    w2.show_all()
+    w2.window.show_all()
 
     app.start()
     #gst.DEBUG_BIN_TO_DOT_FILE(app.pipeline, gst.DEBUG_GRAPH_SHOW_NON_DEFAULT_PARAMS | gst.DEBUG_GRAPH_SHOW_MEDIA_TYPE , 'debug1')
