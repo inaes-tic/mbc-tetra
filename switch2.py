@@ -46,11 +46,13 @@ class MainWindow(object):
         self.window.connect ("destroy", lambda app: gtk.main_quit())
 
         self.volume_box = self.builder.get_object('volume_controls')
+        self.preview_box = self.builder.get_object('PreviewBox')
 
         self.app = app
 
         sliders = []
         bars = []
+        previews = []
         for idx in range(INPUT_COUNT):
             builder = gtk.Builder ()
             builder.add_objects_from_file ('volume_control.glade', ['volume_control', 'volume_adj'])
@@ -67,10 +69,24 @@ class MainWindow(object):
             mute = builder.get_object ('mute')
             mute.connect ("toggled", self.mute_cb, idx)
 
+            da = gtk.DrawingArea ()
+            self.preview_box.add (da)
+            previews.append (da)
+
+
+        self.previews = previews
+        self.previews.append (self.builder.get_object('LiveOut'))
         self.sliders = sliders
         self.bars = bars
 
         app.connect('level', self.update_levels)
+        app.connect('prepare-xwindow-id', self.prepare_xwindow_id_cb)
+
+    def prepare_xwindow_id_cb (self, app, sink, idx):
+        sink.set_property ("force-aspect-ratio", True)
+        gtk.gdk.threads_enter ()
+        sink.set_xwindow_id (self.previews[idx].window.xid)
+        gtk.gdk.threads_leave ()
 
     def update_levels (self, app, idx, peak):
         gtk.gdk.threads_enter ()
@@ -108,6 +124,8 @@ class App(gobject.GObject):
         self.inputsel.link(parse)
         parse.link(dec)
         dec.link(self.vsink)
+
+        self.preview_sinks = []
 
 ##
 ##        self.vsink = gst.element_factory_make ('tcpserversink', None)
@@ -179,6 +197,8 @@ class App(gobject.GObject):
             self.add_audio_source('alsasrc', [('device', 'hw:%d,0' % (idx+1))] )
             continue
 
+### XXX: mejor nomenclatura
+        self.preview_sinks.append (self.vsink)
 
     def add_audio_source (self, sourcename=None, props=None):
         # 10 samples per second
@@ -264,6 +284,7 @@ class App(gobject.GObject):
 ##        q0.link (self.inputsel)
 ##        q1.link (sink)
         self.video_inputs.append(src)
+        self.preview_sinks.append (sink)
 ##        self.video_queues.append(q0)
 ##        self.video_queues.append(q1)
 
@@ -314,8 +335,10 @@ class App(gobject.GObject):
         self.pipeline.set_state (gst.STATE_PLAYING)
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
+        bus.enable_sync_message_emission()
         bus.connect("message::element", self.bus_element_cb)
         bus.connect("message", self.bus_message_cb)
+        bus.connect("sync-message::element", self.bus_sync_message_cb)
 
         for src in self.video_inputs:
             for prop,val in INITIAL_INPUT_PROPS:
@@ -364,6 +387,17 @@ class App(gobject.GObject):
         return True
 
 
+    def bus_sync_message_cb (self, bus, msg):
+        if msg.structure is None:
+            return True
+        s = msg.structure
+        if s.get_name() == "prepare-xwindow-id":
+            for idx,sink in enumerate (self.preview_sinks):
+                if msg.src in list(sink.elements()):
+                    self.emit ('prepare-xwindow-id', msg.src, idx)
+                    print 'app: prepare-xwindow-id for sink: ', idx
+            return True
+
     def bus_element_cb (self, bus, msg, arg=None):
         if msg.structure is None:
             return True
@@ -408,6 +442,7 @@ class App(gobject.GObject):
 gobject.type_register(App)
 # level: chanidx, level
 gobject.signal_new("level", App, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (int,float))
+gobject.signal_new("prepare-xwindow-id", App, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_OBJECT,int))
 ###
 
 if __name__ == "__main__":
