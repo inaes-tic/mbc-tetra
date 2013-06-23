@@ -17,6 +17,7 @@ UPDATE_INTERVAL = .25
 MIN_ON_AIR_TIME = 3
 # dB
 DEFAULT_NOISE_BASELINE = -45
+NOISE_THRESHOLD = 6
 SPEAK_UP_THRESHOLD = 3
 
 PREVIEW_CAPS = gst.Caps ('video/x-raw-yuv,width=640,height=480,rate=30')
@@ -248,9 +249,9 @@ class TetraApp(gobject.GObject):
         idx = inputidx % len(pads)
 
         newpad = pads[idx]
-        self.current_input = inputidx
-        print 'SET ACTIVE INPUT inputidx: ', inputidx, ' idx: ', idx
+        self.current_input = idx
         if idx != pads.index(oldpad):
+            print 'SET ACTIVE INPUT inputidx: ', inputidx, ' idx: ', idx
             isel.set_property('active-pad', newpad)
             s = gst.Structure ('GstForceKeyUnit')
             s.set_value ('running-time', -1)
@@ -299,20 +300,34 @@ class TetraApp(gobject.GObject):
             self.last_switch_time = now
             self.set_active_input (src)
             print 'DO_SWITCH ', src
+        def do_rotate():
+            self.last_switch_time = now
+            self.set_active_input (self.current_input+1)
+            print 'DO_ROTATE '
 
         if (now - self.last_switch_time) < self.min_on_air_time:
             return True
-        print 'PROCESS current_input ', self.current_input
+###        print 'PROCESS current_input ', self.current_input
+
         dpeaks = []
         avgs = []
+        silent = True
         for idx,q in enumerate (self.audio_avg):
-            avgs.append ( (idx, sum (q) / (10*WINDOW_LENGTH)) )
+            avg = sum (q) / (10*WINDOW_LENGTH)
+            dp = (q[-1] - q[0]) / (10*(WINDOW_LENGTH-1))
+            avgs.append ( (idx, avg) )
+            dpeaks.append ( (idx, dp) )
+            if abs (avg-self.noise_baseline) > NOISE_THRESHOLD:
+                silent = False
+        if silent:
+            do_rotate ()
+            return True
 
-        for idx,q in enumerate (self.audio_avg):
-            dp = []
-            for (x1,x2) in zip (q, list(q)[1:]):
-                dp.append (x2-x1)
-            dpeaks.append ( (idx, sum(dp) / (10*(WINDOW_LENGTH-1))) )
+##        for idx,q in enumerate (self.audio_avg):
+##            dp = []
+##            for (x1,x2) in zip (q, list(q)[1:]):
+##                dp.append (x2-x1)
+##            dpeaks.append ( (idx, sum(dp) / (10*(WINDOW_LENGTH-1))) )
 
 # ver caso si mas de uno pasa umbral.
         peaks_over = filter (lambda x: x[1] > self.speak_up_threshold, dpeaks)
@@ -326,7 +341,7 @@ class TetraApp(gobject.GObject):
         do_switch (idx)
         #return True
 
-        print ' AVGs ', avgs , ' dPEAKs ', dpeaks
+###        print ' AVGs ', avgs , ' dPEAKs ', dpeaks
         return True
 
 
@@ -349,9 +364,11 @@ class TetraApp(gobject.GObject):
         if s.get_name() == "level":
             idx = self.levels.index (msg.src)
             #print 'RMS ', s['rms']
-            self.audio_avg[idx].append (s['rms'][0])
-            self.audio_peak[idx].append (s['peak'][0])
-            self.emit('level', idx, s['peak'][0])
+            rms = sum (s['rms']) / len (s['rms'])
+            peak = sum (s['peak']) / len (s['peak'])
+            self.audio_avg[idx].append (rms)
+            self.audio_peak[idx].append (peak)
+            self.emit('level', idx, peak)
         return True
 
     def bus_message_cb (self, bus, msg, arg=None):
