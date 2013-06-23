@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-
-import sys
 import time
 from collections import deque
 from itertools import ifilter
@@ -19,7 +16,7 @@ WINDOW_LENGTH = 1.5
 UPDATE_INTERVAL = .25
 MIN_ON_AIR_TIME = 3
 # dB
-NOISE_BASELINE = -45
+DEFAULT_NOISE_BASELINE = -45
 SPEAK_UP_THRESHOLD = 3
 
 PREVIEW_CAPS = gst.Caps ('video/x-raw-yuv,width=640,height=480,rate=30')
@@ -36,77 +33,15 @@ INITIAL_INPUT_PROPS = [
 # broadcast
                 ('usage-type', 2),
 ]
-
-class MainWindow(object):
-    def __init__(self, app):
-        self.builder = gtk.Builder ()
-        self.builder.add_from_file ('main_ui.glade')
-
-        self.window = self.builder.get_object('tetra_main')
-        self.window.connect ("destroy", lambda app: gtk.main_quit())
-
-        self.volume_box = self.builder.get_object('volume_controls')
-        self.preview_box = self.builder.get_object('PreviewBox')
-
-        self.app = app
-
-        sliders = []
-        bars = []
-        previews = []
-        for idx in range(INPUT_COUNT):
-            builder = gtk.Builder ()
-            builder.add_objects_from_file ('volume_control.glade', ['volume_control', 'volume_adj'])
-            vc = builder.get_object ('volume_control')
-            self.volume_box.add (vc)
-
-            slider = builder.get_object ('volume')
-            slider.connect ("value-changed", self.slider_cb, idx)
-            sliders.append (slider)
-
-            bar = builder.get_object ('peak')
-            bars.append (bar)
-
-            mute = builder.get_object ('mute')
-            mute.connect ("toggled", self.mute_cb, idx)
-
-            da = gtk.DrawingArea ()
-            self.preview_box.add (da)
-            previews.append (da)
-
-
-        self.previews = previews
-        self.previews.append (self.builder.get_object('LiveOut'))
-        self.sliders = sliders
-        self.bars = bars
-
-        app.connect('level', self.update_levels)
-        app.connect('prepare-xwindow-id', self.prepare_xwindow_id_cb)
-
-    def prepare_xwindow_id_cb (self, app, sink, idx):
-        sink.set_property ("force-aspect-ratio", True)
-        gtk.gdk.threads_enter ()
-        sink.set_xwindow_id (self.previews[idx].window.xid)
-        gtk.gdk.threads_leave ()
-
-    def update_levels (self, app, idx, peak):
-        gtk.gdk.threads_enter ()
-        frac = 1.0 - peak/NOISE_BASELINE
-        if frac < 0:
-            frac = 0
-        self.bars[idx].set_fraction (frac)
-        gtk.gdk.threads_leave ()
-        return True
-
-    def mute_cb(self, toggle, chan):
-        self.app.mute_channel (chan, toggle.get_active())
-
-    def slider_cb(self, slider, chan):
-        self.app.set_channel_volume (chan, slider.get_value()/100.0)
-
-class App(gobject.GObject):
+class TetraApp(gobject.GObject):
     def __init__(self):
         gobject.GObject.__init__(self)
         self.current_input = INPUT_COUNT - 1
+
+        self.noise_baseline = DEFAULT_NOISE_BASELINE
+        self.speak_up_threshold = SPEAK_UP_THRESHOLD
+        self.min_on_air_time = MIN_ON_AIR_TIME
+
         self.last_switch_time = time.time()
 
         self.pipeline = pipeline = gst.Pipeline ('pipeline')
@@ -309,6 +244,7 @@ class App(gobject.GObject):
         isel = self.inputsel
         oldpad = isel.get_property ('active-pad')
         pads = list(isel.sink_pads())
+        pads.reverse()
         idx = inputidx % len(pads)
 
         newpad = pads[idx]
@@ -343,9 +279,16 @@ class App(gobject.GObject):
         for src in self.video_inputs:
             for prop,val in INITIAL_INPUT_PROPS:
                 src.set_property(prop, val)
-            time.sleep(0.5)
-
         self.tid = glib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
+        glib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
+
+    def calibrate_bg_noise (self, *args):
+        res = 0
+        for q in self.audio_avg:
+            res += sum (q) / (10*WINDOW_LENGTH)
+        res /= len (self.audio_avg)
+        self.noise_baseline = res
+        print 'NOISE BG: ', res
 
 # XXX: devolver True, sino el timeout se destruye
     def process_levels (self):
@@ -357,7 +300,7 @@ class App(gobject.GObject):
             self.set_active_input (src)
             print 'DO_SWITCH ', src
 
-        if (now - self.last_switch_time) < MIN_ON_AIR_TIME:
+        if (now - self.last_switch_time) < self.min_on_air_time:
             return True
         print 'PROCESS current_input ', self.current_input
         dpeaks = []
@@ -372,7 +315,7 @@ class App(gobject.GObject):
             dpeaks.append ( (idx, sum(dp) / (10*(WINDOW_LENGTH-1))) )
 
 # ver caso si mas de uno pasa umbral.
-        peaks_over = filter (lambda x: x[1] > SPEAK_UP_THRESHOLD, dpeaks)
+        peaks_over = filter (lambda x: x[1] > self.speak_up_threshold, dpeaks)
         if peaks_over:
             idx, peak = max (peaks_over, key= lambda x: x[1])
             print ' PEAKS OVER ', peaks_over
@@ -415,47 +358,12 @@ class App(gobject.GObject):
         if msg.type == gst.MESSAGE_CLOCK_LOST:
             self.pipeline.set_state (gst.STATE_PAUSED)
             self.pipeline.set_state (gst.STATE_PLAYING)
-#        if msg.src not in self.video_inputs:
-#            return
-##         if msg.type == gst.MESSAGE_ERROR:
-##             self.pipeline.set_state (gst.STATE_PAUSED)
-##             for src in self.video_inputs:
-##                 src.set_state (gst.STATE_NULL)
-##                 for q in self.video_queues:
-##                     src.unlink(q)
-##                 self.pipeline.remove (src)
-            #self.pipeline.set_state (gst.STATE_NULL)
-            #self.pipeline.set_state (gst.STATE_PLAYING)
-
-            print ''
-            print ' MSG src  ', msg.src , ' in src ', msg.src in self.video_inputs
-            print ' MSG type ', msg.type
-            if msg.structure:
-                if msg.structure.get_name() == 'level':
-                    return
-                print ' MSG str ', msg.structure.get_name()
-                print ' MSG con ', msg.structure.to_string()
         return True
 
 
 ###
-gobject.type_register(App)
+gobject.type_register(TetraApp)
 # level: chanidx, level
-gobject.signal_new("level", App, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (int,float))
-gobject.signal_new("prepare-xwindow-id", App, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_OBJECT,int))
+gobject.signal_new("level", TetraApp, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (int,float))
+gobject.signal_new("prepare-xwindow-id", TetraApp, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_OBJECT,int))
 ###
-
-if __name__ == "__main__":
-
-    app = App()
-
-    w2 = MainWindow(app)
-    w2.window.show_all()
-
-    app.start()
-    #gst.DEBUG_BIN_TO_DOT_FILE(app.pipeline, gst.DEBUG_GRAPH_SHOW_NON_DEFAULT_PARAMS | gst.DEBUG_GRAPH_SHOW_MEDIA_TYPE , 'debug1')
-    gst.DEBUG_BIN_TO_DOT_FILE(app.pipeline, gst.DEBUG_GRAPH_SHOW_NON_DEFAULT_PARAMS | gst.DEBUG_GRAPH_SHOW_MEDIA_TYPE | gst.DEBUG_GRAPH_SHOW_CAPS_DETAILS, 'debug1')
-
-    gtk.main()
-    sys.exit(0)
-
