@@ -18,10 +18,11 @@ class MainWindow(object):
         self.app = app
 
         self.builder = gtk.Builder ()
-        self.builder.add_from_file ('main_ui.glade')
+        self.builder.add_from_file ('main_ui_2.glade')
 
         self.window = self.builder.get_object('tetra_main')
         self.window.connect ("destroy", lambda app: gtk.main_quit())
+        self.window.fullscreen ()
 
         self.volume_box = self.builder.get_object('volume_controls')
         self.preview_box = self.builder.get_object('PreviewBox')
@@ -49,8 +50,10 @@ class MainWindow(object):
 
             da = gtk.DrawingArea ()
 ## XXX
-            da.set_property ('height-request', 120)
-            da.set_property ('width-request', 160)
+            da.add_events(gtk.gdk.BUTTON_PRESS_MASK)
+            da.connect('button-press-event', self.preview_click_cb, idx)
+            da.set_property ('height-request', 240)
+            da.set_property ('width-request', 320)
             self.preview_box.add (da)
             previews.append (da)
 
@@ -63,9 +66,12 @@ class MainWindow(object):
         app.connect('level', self.update_levels)
         app.connect('prepare-xwindow-id', self.prepare_xwindow_id_cb)
 
+    def preview_click_cb (self, widget, event, idx):
+        self.app.set_active_input (idx)
+
     def prepare_xwindow_id_cb (self, app, sink, idx):
-        sink.set_property ("force-aspect-ratio", True)
         gtk.gdk.threads_enter ()
+        sink.set_property ("force-aspect-ratio", True)
         sink.set_xwindow_id (self.previews[idx].window.xid)
         gtk.gdk.threads_leave ()
 
@@ -74,6 +80,8 @@ class MainWindow(object):
         frac = 1.0 - peak/DEFAULT_NOISE_BASELINE
         if frac < 0:
             frac = 0
+        elif frac > 1:
+            frac = 1
         self.bars[idx].set_fraction (frac)
         gtk.gdk.threads_leave ()
         return True
@@ -87,6 +95,9 @@ class MainWindow(object):
 
 if __name__ == "__main__":
 
+    #gtk.rc_parse('./theme_tetra.gtkrc')
+    #gtk.rc_parse('melissablue/gtkrc')
+    gtk.rc_parse('diehard4/gtkrc')
     app = TetraApp()
 
     w2 = MainWindow(app)

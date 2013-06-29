@@ -151,6 +151,11 @@ class TetraApp(gobject.GObject):
         fasink = gst.element_factory_make ('fakesink', None)
         fasink.set_property ('sync', True)
 #
+        aconv = gst.element_factory_make ('audioconvert', None)
+
+        flt = gst.element_factory_make ('audiochebband', None)
+        flt.set_property ('lower-frequency', 400)
+        flt.set_property ('upper-frequency', 3500)
         level = gst.element_factory_make ('level', None)
         level.set_property ("message", True)
 
@@ -160,6 +165,8 @@ class TetraApp(gobject.GObject):
         self.pipeline.add (tee)
         self.pipeline.add (volume)
         self.pipeline.add (fasink)
+        self.pipeline.add (aconv)
+        self.pipeline.add (flt)
         self.pipeline.add (level)
 
         if props:
@@ -172,7 +179,9 @@ class TetraApp(gobject.GObject):
         volume.link (tee)
         tee.link_filtered(self.amixer, caps)
         tee.link (q1)
-        q1.link (level)
+        q1.link (aconv)
+        aconv.link (flt)
+        flt.link (level)
         level.link(fasink)
 
         self.audio_inputs.append (src)
@@ -182,6 +191,15 @@ class TetraApp(gobject.GObject):
         self.levels.append (level)
         self.volumes.append (volume)
         self.fasinks.append (fasink)
+
+    def buffer_probe_cb(self, pad, buffer, *args):
+        if buffer.flag_is_set(gst.BUFFER_FLAG_DELTA_UNIT):
+            print 'KEYFRAME '
+        return True
+        #print type(arg1), type(arg2), type(args)
+
+    def event_probe_cb(self, pad, event, *args):
+        return True
 
     def add_video_source (self, sourcename=None, props=None):
         name = sourcename or 'v4l2src'
@@ -205,6 +223,8 @@ class TetraApp(gobject.GObject):
             for prop,val in props:
                 src.set_property(prop, val)
 
+        src.set_property('message-forward', True)
+
 # XXX:
         q0.set_property ('max-size-time', int(3*gst.SECOND))
         src.link_pads_filtered ('vidsrc', q0, 'sink', H264_CAPS)
@@ -223,6 +243,10 @@ class TetraApp(gobject.GObject):
         self.preview_sinks.append (sink)
 ##        self.video_queues.append(q0)
 ##        self.video_queues.append(q1)
+
+        vidsrc = src.get_static_pad('vidsrc')
+        vidsrc.add_buffer_probe(self.buffer_probe_cb)
+        vidsrc.add_event_probe(self.event_probe_cb)
 
     def mute_channel (self, chanidx, mute):
         try:
@@ -314,7 +338,7 @@ class TetraApp(gobject.GObject):
         silent = True
         for idx,q in enumerate (self.audio_avg):
             avg = sum (q) / (10*WINDOW_LENGTH)
-            dp = (q[-1] - q[0]) / (10*(WINDOW_LENGTH-1))
+            dp = (q[-1] - q[0])
             avgs.append ( (idx, avg) )
             dpeaks.append ( (idx, dp) )
             if abs (avg-self.noise_baseline) > NOISE_THRESHOLD:
@@ -334,12 +358,12 @@ class TetraApp(gobject.GObject):
         if peaks_over:
             idx, peak = max (peaks_over, key= lambda x: x[1])
             print ' PEAKS OVER ', peaks_over
-            do_switch (idx)
-            return True
+            if abs(avgs[idx][1] - self.noise_baseline) > NOISE_THRESHOLD:
+                do_switch (idx)
+                return True
 
         idx, avg = max (avgs, key= lambda x: x[1])
         do_switch (idx)
-        #return True
 
 ###        print ' AVGs ', avgs , ' dPEAKs ', dpeaks
         return True

@@ -67,11 +67,24 @@
                 <property name="can_focus">True</property>
                 <property name="label_fill">True</property>
                 <child>
-                  <object class="GtkButton" id="calibrate_bg_noise">
-                    <property name="label" translatable="yes">Calibrar ruido de fondo</property>
+                  <object class="GtkTable" id="table2">
                     <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="receives_default">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="n_rows">3</property>
+                    <child>
+                      <object class="GtkButton" id="calibrate_bg_noise">
+                        <property name="label" translatable="yes">Calibrar ruido de fondo</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="receives_default">True</property>
+                      </object>
+                    </child>
+                    <child>
+                      <placeholder/>
+                    </child>
+                    <child>
+                      <placeholder/>
+                    </child>
                   </object>
                 </child>
                 <child type="label">
