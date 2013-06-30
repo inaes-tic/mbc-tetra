@@ -1,14 +1,20 @@
 import time
+import sys
+import os
 from collections import deque
 from itertools import ifilter
 
-import gobject
-import gst
-import glib
-import gtk
 
-gobject.threads_init()
-gtk.gdk.threads_init()
+import gi
+gi.require_version('Gst', '1.0')
+
+from gi.repository import GObject
+from gi.repository import Gst
+from gi.repository import GstVideo
+from gi.repository import GLib
+
+GObject.threads_init()
+Gst.init(sys.argv)
 
 INPUT_COUNT = 3
 # seconds
@@ -20,23 +26,23 @@ DEFAULT_NOISE_BASELINE = -45
 NOISE_THRESHOLD = 6
 SPEAK_UP_THRESHOLD = 3
 
-PREVIEW_CAPS = gst.Caps ('video/x-raw-yuv,width=640,height=480,rate=30')
-#H264_CAPS = gst.Caps ('video/x-h264,width=1280,heigth=720,framerate=30/1,profile=high')
-#H264_CAPS = gst.Caps ('video/x-h264,width=1920,heigth=1080,framerate=30/1,profile=high')
-PREVIEW_CAPS = gst.Caps ('video/x-raw-yuv,width=320,height=240,rate=30')
-H264_CAPS = gst.Caps ('video/x-h264,width=640,framerate=30/1,profile=high')
+## FIXME: tamano real mas luego.
+## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=320,rate=30,framerate=30/1')
+## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=1024,rate=30,framerate=30/1')
+VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=800,heigth=448,rate=30,framerate=30/1')
+AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,format=S16LE,rate=32000,channels=2')
 
-AUDIO_CAPS = gst.Caps ('audio/x-raw,format=S16LE,rate=32000,channels=2')
-INITIAL_INPUT_PROPS = [
-                ('initial-bitrate', 12000000),
-                ('average-bitrate', 12000000),
-                ('peak-bitrate', 12000000),
-# broadcast
-                ('usage-type', 2),
-]
-class TetraApp(gobject.GObject):
+XV_SYNC=False
+MANUAL=False
+
+class TetraApp(GObject.GObject):
+    __gsignals__ = {
+        "level": (GObject.SIGNAL_RUN_FIRST, None, (int,float)),
+       "prepare-xwindow-id": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
+       "prepare-window-handle": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
+    }
     def __init__(self):
-        gobject.GObject.__init__(self)
+        GObject.GObject.__init__(self)
         self.current_input = INPUT_COUNT - 1
 
         self.noise_baseline = DEFAULT_NOISE_BASELINE
@@ -45,54 +51,21 @@ class TetraApp(gobject.GObject):
 
         self.last_switch_time = time.time()
 
-        self.pipeline = pipeline = gst.Pipeline ('pipeline')
+        self.pipeline = pipeline = Gst.Pipeline.new ('pipeline')
 
-        self.inputsel = gst.element_factory_make ('input-selector', None)
+        self.inputsel = Gst.ElementFactory.make ('input-selector', None)
         self.pipeline.add (self.inputsel)
-        #self.vsink = gst.element_factory_make ('fakesink', None)
-        self.vsink = gst.element_factory_make ('autovideosink', None)
+        #self.vsink = Gst.ElementFactory.make ('fakesink', None)
+        q = Gst.ElementFactory.make ('queue2', None)
+        self.vsink = Gst.ElementFactory.make ('xvimagesink', None)
+        self.vsink.set_property('sync', XV_SYNC)
+        self.pipeline.add (q)
         self.pipeline.add (self.vsink)
-        parse = gst.element_factory_make ('h264parse', None)
-        parse.set_property ('config-interval', 1)
-        dec = gst.element_factory_make ('ffdec_h264', None)
-        self.pipeline.add (parse)
-        self.pipeline.add (dec)
-        self.inputsel.link(parse)
-        parse.link(dec)
-        dec.link(self.vsink)
-
+        self.inputsel.link(q)
+        q.link(self.vsink)
         self.preview_sinks = []
 
-##
-##        self.vsink = gst.element_factory_make ('tcpserversink', None)
-##        self.vsink.set_property('host', '127.0.0.1')
-##        self.vsink.set_property('port', 9078)
-##        self.vpay = gst.element_factory_make ('mp4mux', None)
-##        parser = gst.element_factory_make ('h264parse', None)
-##        parser.set_property ('config-interval',2)
-##        self.pipeline.add(parser)
-##        self.vpay.set_property('streamable', True)
-##        self.vpay.set_property('fragment-duration', 100)
-
-#        self.vsink_preview = gst.element_factory_make ('autovideosink', None)
-#        self.vmixer = gst.element_factory_make ('videomixer', None)
-#        self.vmixerq = gst.element_factory_make ('queue2', 'vmixer Q')
-
-        self.asink = gst.element_factory_make ('autoaudiosink', None)
-        #self.asink = gst.element_factory_make ('fakesink', None)
-
-
-##         self.pipeline.add (self.vpay)
-#        self.pipeline.add (self.vsink_preview)
-#        self.pipeline.add (self.vmixer)
-#        self.pipeline.add (self.vmixerq)
-
-##        self.inputsel.link_filtered (parser, H264_CAPS)
-##        parser.link(self.vpay)
-##        self.vpay.link (self.vsink)
-#        self.vmixer.link (self.vmixerq)
-#        self.vmixerq.link (self.vsink_preview)
-
+        self.asink = Gst.ElementFactory.make ('autoaudiosink', None)
 
         self.audio_inputs = []
         self.audio_queues = []
@@ -102,35 +75,31 @@ class TetraApp(gobject.GObject):
         self.fasinks = []
 
         self.video_inputs = []
-# XXX FIXME: ver en add_video_source
         self.video_tees = []
         self.video_queues = []
         self.volumes = []
 
         self.levels = []
-        self.amixer = gst.element_factory_make ('adder', None)
+        self.amixer = Gst.ElementFactory.make ('adder', None)
+
+        q = Gst.ElementFactory.make ('queue2', None)
+        self.pipeline.add(q)
         self.pipeline.add(self.amixer)
         self.pipeline.add(self.asink)
-        self.amixer.link(self.asink)
+        self.amixer.link(q)
+        q.link(self.asink)
 
         for idx in range(INPUT_COUNT):
             dev = '/dev/video%d' % idx
-            props = [
-                ('device', dev),
-                ('auto-start', True),
-                ('initial-bitrate', 6000000),
-                ('average-bitrate', 6000000),
-                ('peak-bitrate', 12000000),
-                ('iframe-period', 100),
-                ('ltr-buffer-size', 100),
-# broadcast
-                ('usage-type', 2),
-            ]
-            self.add_video_source('uvch264_src', props)
+            props = {
+                'device': dev,
+            }
+            self.add_video_source('v4l2src', props)
 
         for idx in range(INPUT_COUNT):
 ### XXX: hw:0 interno en pc
-            self.add_audio_source('alsasrc', [('device', 'hw:%d,0' % (idx+1))] )
+### XXX: poner regla fija en udev.
+            self.add_audio_source('alsasrc', {'device': 'hw:%d,0' % (idx+1)} )
             continue
 
 ### XXX: mejor nomenclatura
@@ -142,26 +111,28 @@ class TetraApp(gobject.GObject):
         self.audio_peak.append (deque (maxlen=WINDOW_LENGTH * 10))
 
         name = sourcename or 'audiotestsrc'
-        src = gst.element_factory_make (name, None)
-        q0 = gst.element_factory_make ('queue2', None)
-        q1 = gst.element_factory_make ('queue2', None)
-        tee = gst.element_factory_make ('tee', None)
-        volume = gst.element_factory_make ('volume', None)
+        src = Gst.ElementFactory.make (name, None)
+        q0 = Gst.ElementFactory.make ('queue2', None)
+        q1 = Gst.ElementFactory.make ('queue2', None)
+        q2 = Gst.ElementFactory.make ('queue2', None)
+        tee = Gst.ElementFactory.make ('tee', None)
+        volume = Gst.ElementFactory.make ('volume', None)
 #
-        fasink = gst.element_factory_make ('fakesink', None)
-        fasink.set_property ('sync', True)
+        fasink = Gst.ElementFactory.make ('fakesink', None)
+        fasink.set_property ('sync', False)
 #
-        aconv = gst.element_factory_make ('audioconvert', None)
+        aconv = Gst.ElementFactory.make ('audioconvert', None)
 
-        flt = gst.element_factory_make ('audiochebband', None)
+        flt = Gst.ElementFactory.make ('audiochebband', None)
         flt.set_property ('lower-frequency', 400)
         flt.set_property ('upper-frequency', 3500)
-        level = gst.element_factory_make ('level', None)
+        level = Gst.ElementFactory.make ('level', None)
         level.set_property ("message", True)
 
         self.pipeline.add (src)
         self.pipeline.add (q0)
         self.pipeline.add (q1)
+        self.pipeline.add (q2)
         self.pipeline.add (tee)
         self.pipeline.add (volume)
         self.pipeline.add (fasink)
@@ -170,16 +141,17 @@ class TetraApp(gobject.GObject):
         self.pipeline.add (level)
 
         if props:
-            for prop,val in props:
+            for prop,val in props.items():
                 src.set_property (prop, val)
 
-        caps = gst.Caps ('audio/x-raw-int,rate=32000,channels=2')
+        caps = AUDIO_CAPS
         src.link_filtered (q0, caps)
         q0.link (volume)
         volume.link (tee)
-        tee.link_filtered(self.amixer, caps)
         tee.link (q1)
+        tee.link (q2)
         q1.link (aconv)
+        q2.link_filtered(self.amixer, caps)
         aconv.link (flt)
         flt.link (level)
         level.link(fasink)
@@ -187,66 +159,51 @@ class TetraApp(gobject.GObject):
         self.audio_inputs.append (src)
         self.audio_queues.append (q0)
         self.audio_queues.append (q1)
+        self.audio_queues.append (q2)
         self.audio_tees.append (tee)
         self.levels.append (level)
         self.volumes.append (volume)
         self.fasinks.append (fasink)
 
-    def buffer_probe_cb(self, pad, buffer, *args):
-        if buffer.flag_is_set(gst.BUFFER_FLAG_DELTA_UNIT):
-            print 'KEYFRAME '
-        return True
-        #print type(arg1), type(arg2), type(args)
-
-    def event_probe_cb(self, pad, event, *args):
-        return True
-
     def add_video_source (self, sourcename=None, props=None):
         name = sourcename or 'v4l2src'
-        src = gst.element_factory_make (name, None)
-        q0 = gst.element_factory_make ('queue2', None)
-        tee = gst.element_factory_make ('tee', None)
-        parse = gst.element_factory_make ('h264parse', None)
-        dec = gst.element_factory_make ('ffdec_h264', None)
-        q1 = gst.element_factory_make ('queue2', None)
-        sink = gst.element_factory_make ('autovideosink', None)
+        src = Gst.ElementFactory.make (name, None)
+        q0 = Gst.ElementFactory.make ('queue2', None)
+        tee = Gst.ElementFactory.make ('tee', None)
+        parse = Gst.ElementFactory.make ('jpegparse', None)
+        dec = Gst.ElementFactory.make ('jpegdec', None)
+        q1 = Gst.ElementFactory.make ('queue2', None)
+        q2 = Gst.ElementFactory.make ('queue2', None)
+        sink = Gst.ElementFactory.make ('xvimagesink', None)
+        sink.set_property('sync', XV_SYNC)
 
         self.pipeline.add (src)
         self.pipeline.add (sink)
         self.pipeline.add (q0)
         self.pipeline.add (q1)
+        self.pipeline.add (q2)
         self.pipeline.add (tee)
         self.pipeline.add (parse)
         self.pipeline.add (dec)
 
         if props:
-            for prop,val in props:
+            for prop,val in props.items():
                 src.set_property(prop, val)
 
-        src.set_property('message-forward', True)
-
 # XXX:
-        q0.set_property ('max-size-time', int(3*gst.SECOND))
-        src.link_pads_filtered ('vidsrc', q0, 'sink', H264_CAPS)
-        q0.link(tee)
-        tee.link(parse)
-        tee.link(q1)
-        q1.link(self.inputsel)
+        #q0.set_property ('max-size-time', int(1*Gst.SECOND))
+        src.link(q0)
+        q0.link_filtered(parse, VIDEO_CAPS)
+        #parse.link(tee)
         parse.link(dec)
-        dec.link(sink)
+        dec.link(tee)
+        tee.link(q1)
+        tee.link(q2)
+        q1.link(self.inputsel)
+        q2.link(sink)
 
-##        src.link_pads_filtered ('vfsrc', q1, 'sink', PREVIEW_CAPS)
-
-##        q0.link (self.inputsel)
-##        q1.link (sink)
         self.video_inputs.append(src)
         self.preview_sinks.append (sink)
-##        self.video_queues.append(q0)
-##        self.video_queues.append(q1)
-
-        vidsrc = src.get_static_pad('vidsrc')
-        vidsrc.add_buffer_probe(self.buffer_probe_cb)
-        vidsrc.add_event_probe(self.event_probe_cb)
 
     def mute_channel (self, chanidx, mute):
         try:
@@ -268,8 +225,7 @@ class TetraApp(gobject.GObject):
     def set_active_input(self, inputidx):
         isel = self.inputsel
         oldpad = isel.get_property ('active-pad')
-        pads = list(isel.sink_pads())
-        pads.reverse()
+        pads = isel.sinkpads
         idx = inputidx % len(pads)
 
         newpad = pads[idx]
@@ -277,35 +233,40 @@ class TetraApp(gobject.GObject):
         if idx != pads.index(oldpad):
             print 'SET ACTIVE INPUT inputidx: ', inputidx, ' idx: ', idx
             isel.set_property('active-pad', newpad)
-            s = gst.Structure ('GstForceKeyUnit')
-            s.set_value ('running-time', -1)
-            s.set_value ('count', 0)
-            s.set_value ('all-headers', True)
-            ev = gst.event_new_custom (gst.EVENT_CUSTOM_UPSTREAM, s)
-            self.video_inputs[idx].send_event (ev)
+##             s = Gst.Structure ('GstForceKeyUnit')
+##             s.set_value ('running-time', -1)
+##             s.set_value ('count', 0)
+##             s.set_value ('all-headers', True)
+##             ev = Gst.event_new_custom (Gst.EVENT_CUSTOM_UPSTREAM, s)
+##             self.video_inputs[idx].send_event (ev)
 
     def toggle (self, *args):
         e = self.inputsel
         s = e.get_property ('active-pad')
         # pads[0] output, rest input sinks.
         # set_active_input() uses 0..N, so this works out to switch to the next
-        i = 1 + list(e.pads()).index(s)
+        i = e.pads.index(s)
         self.set_active_input(i)
 
+# XXX: 
+    def set_uvc_controls (self):
+        cmd = "uvcdynctrl -s 'Exposure, Auto Priority' 0 --device="
+        for src in self.video_inputs:
+            os.system(cmd + src.get_property('device'))
+
     def start (self):
-        self.pipeline.set_state (gst.STATE_PLAYING)
+        self.set_uvc_controls()
+        self.pipeline.set_state (Gst.State.PLAYING)
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
-        bus.enable_sync_message_emission()
         bus.connect("message::element", self.bus_element_cb)
         bus.connect("message", self.bus_message_cb)
+        bus.enable_sync_message_emission()
         bus.connect("sync-message::element", self.bus_sync_message_cb)
 
-        for src in self.video_inputs:
-            for prop,val in INITIAL_INPUT_PROPS:
-                src.set_property(prop, val)
-        self.tid = glib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
-        glib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
+        if not MANUAL:
+            self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
+        GLib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
 
     def calibrate_bg_noise (self, *args):
         res = 0
@@ -370,41 +331,33 @@ class TetraApp(gobject.GObject):
 
 
     def bus_sync_message_cb (self, bus, msg):
-        if msg.structure is None:
+        if msg.get_structure() is None:
             return True
-        s = msg.structure
-        if s.get_name() == "prepare-xwindow-id":
-            for idx,sink in enumerate (self.preview_sinks):
-                if msg.src in list(sink.elements()):
-                    self.emit ('prepare-xwindow-id', msg.src, idx)
-                    print 'app: prepare-xwindow-id for sink: ', idx
+        s = msg.get_structure()
+        if s.get_name() in  ("prepare-xwindow-id", "prepare-window-handle"):
+            idx = self.preview_sinks.index(msg.src)
+            self.emit (s.get_name(), msg.src, idx)
             return True
 
     def bus_element_cb (self, bus, msg, arg=None):
-        if msg.structure is None:
+        if msg.get_structure() is None:
             return True
 
-        s = msg.structure
+        s = msg.get_structure()
         if s.get_name() == "level":
             idx = self.levels.index (msg.src)
-            #print 'RMS ', s['rms']
-            rms = sum (s['rms']) / len (s['rms'])
-            peak = sum (s['peak']) / len (s['peak'])
+            arms = s.get_value('rms')
+            apeak = s.get_value('peak')
+            rms = sum (arms) / len (arms)
+            peak = sum (apeak) / len (apeak)
             self.audio_avg[idx].append (rms)
             self.audio_peak[idx].append (peak)
             self.emit('level', idx, peak)
         return True
 
     def bus_message_cb (self, bus, msg, arg=None):
-        if msg.type == gst.MESSAGE_CLOCK_LOST:
-            self.pipeline.set_state (gst.STATE_PAUSED)
-            self.pipeline.set_state (gst.STATE_PLAYING)
+        if msg.type == Gst.MessageType.CLOCK_LOST:
+            self.pipeline.set_state (Gst.State.PAUSED)
+            self.pipeline.set_state (Gst.State.PLAYING)
         return True
 
-
-###
-gobject.type_register(TetraApp)
-# level: chanidx, level
-gobject.signal_new("level", TetraApp, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (int,float))
-gobject.signal_new("prepare-xwindow-id", TetraApp, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_OBJECT,int))
-###

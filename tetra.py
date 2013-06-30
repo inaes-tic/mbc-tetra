@@ -3,13 +3,21 @@
 import sys
 import time
 
-import gobject
-import gst
-import glib
-import gtk
+import gi
+gi.require_version('Gst', '1.0')
 
-gobject.threads_init()
-gtk.gdk.threads_init()
+from gi.repository import GObject
+from gi.repository import Gst
+from gi.repository import GstVideo
+from gi.repository import Gtk
+from gi.repository import Gdk
+from gi.repository import GdkX11
+
+GObject.threads_init()
+Gst.init(sys.argv)
+Gtk.init(sys.argv)
+Gdk.init(sys.argv)
+
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
 
@@ -17,26 +25,22 @@ class MainWindow(object):
     def __init__(self, app):
         self.app = app
 
-        self.builder = gtk.Builder ()
-        self.builder.add_from_file ('main_ui_2.glade')
+        self.builder = Gtk.Builder ()
+        self.builder.add_from_file ('main_ui_2.ui')
 
         self.window = self.builder.get_object('tetra_main')
-        self.window.connect ("destroy", lambda app: gtk.main_quit())
+        self.window.connect ("destroy", lambda app: Gtk.main_quit())
         self.window.fullscreen ()
 
-        self.volume_box = self.builder.get_object('volume_controls')
         self.preview_box = self.builder.get_object('PreviewBox')
-
-        self.builder.get_object ('calibrate_bg_noise').connect ('clicked', self.app.calibrate_bg_noise)
 
         sliders = []
         bars = []
         previews = []
+
         for idx in range(INPUT_COUNT):
-            builder = gtk.Builder ()
-            builder.add_objects_from_file ('volume_control.glade', ['volume_control', 'volume_adj'])
-            vc = builder.get_object ('volume_control')
-            self.volume_box.add (vc)
+            builder = Gtk.Builder ()
+            builder.add_objects_from_file ('preview_box.ui', ['PreviewBoxItem'])
 
             slider = builder.get_object ('volume')
             slider.connect ("value-changed", self.slider_cb, idx)
@@ -48,14 +52,14 @@ class MainWindow(object):
             mute = builder.get_object ('mute')
             mute.connect ("toggled", self.mute_cb, idx)
 
-            da = gtk.DrawingArea ()
+            da = builder.get_object('preview')
 ## XXX
-            da.add_events(gtk.gdk.BUTTON_PRESS_MASK)
+            da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
             da.connect('button-press-event', self.preview_click_cb, idx)
-            da.set_property ('height-request', 240)
-            da.set_property ('width-request', 320)
-            self.preview_box.add (da)
+##             da.set_property ('height-request', 240)
+##             da.set_property ('width-request', 320)
             previews.append (da)
+            self.preview_box.add(builder.get_object('PreviewBoxItem'))
 
 
         self.previews = previews
@@ -63,50 +67,59 @@ class MainWindow(object):
         self.sliders = sliders
         self.bars = bars
 
+        self.window.show_all()
+
+        for da, sink in zip(previews, app.preview_sinks):
+            sink.set_window_handle(da.get_property('window').get_xid())
+
         app.connect('level', self.update_levels)
-        app.connect('prepare-xwindow-id', self.prepare_xwindow_id_cb)
 
     def preview_click_cb (self, widget, event, idx):
+        print 'PREVIEW CLICK idx ', idx
         self.app.set_active_input (idx)
 
     def prepare_xwindow_id_cb (self, app, sink, idx):
-        gtk.gdk.threads_enter ()
+        return True
+        Gdk.threads_enter ()
         sink.set_property ("force-aspect-ratio", True)
         sink.set_xwindow_id (self.previews[idx].window.xid)
-        gtk.gdk.threads_leave ()
+        Gdk.threads_leave ()
 
     def update_levels (self, app, idx, peak):
-        gtk.gdk.threads_enter ()
+        Gdk.threads_enter ()
         frac = 1.0 - peak/DEFAULT_NOISE_BASELINE
         if frac < 0:
             frac = 0
         elif frac > 1:
             frac = 1
         self.bars[idx].set_fraction (frac)
-        gtk.gdk.threads_leave ()
+        Gdk.threads_leave ()
         return True
 
     def mute_cb(self, toggle, chan):
         self.app.mute_channel (chan, toggle.get_active())
 
-    def slider_cb(self, slider, chan):
-        self.app.set_channel_volume (chan, slider.get_value()/100.0)
+    def slider_cb(self, slider, value, chan):
+        self.app.set_channel_volume (chan, value)
 
+
+def load_theme(theme):
+    provider = Gtk.CssProvider.get_default()
+    provider.load_from_path(theme)
+    screen = Gdk.Screen.get_default()
+    context = Gtk.StyleContext()
+    context.add_provider_for_screen(screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
 
 if __name__ == "__main__":
 
-    #gtk.rc_parse('./theme_tetra.gtkrc')
-    #gtk.rc_parse('melissablue/gtkrc')
-    gtk.rc_parse('diehard4/gtkrc')
     app = TetraApp()
 
     w2 = MainWindow(app)
-    w2.window.show_all()
 
     app.start()
-    #gst.DEBUG_BIN_TO_DOT_FILE(app.pipeline, gst.DEBUG_GRAPH_SHOW_NON_DEFAULT_PARAMS | gst.DEBUG_GRAPH_SHOW_MEDIA_TYPE , 'debug1')
-    gst.DEBUG_BIN_TO_DOT_FILE(app.pipeline, gst.DEBUG_GRAPH_SHOW_NON_DEFAULT_PARAMS | gst.DEBUG_GRAPH_SHOW_MEDIA_TYPE | gst.DEBUG_GRAPH_SHOW_CAPS_DETAILS, 'debug1')
 
-    gtk.main()
+    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug1')
+
+    Gtk.main()
     sys.exit(0)
 
