@@ -16,7 +16,7 @@ from gi.repository import GLib
 GObject.threads_init()
 Gst.init(sys.argv)
 
-INPUT_COUNT = 3
+INPUT_COUNT = 2
 # seconds
 WINDOW_LENGTH = 1.5
 UPDATE_INTERVAL = .25
@@ -35,6 +35,8 @@ AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,format=S16LE,rate=32000,channels
 XV_SYNC=False
 MANUAL=False
 
+dump_idx = 0
+
 class TetraApp(GObject.GObject):
     __gsignals__ = {
         "level": (GObject.SIGNAL_RUN_FIRST, None, (int,float)),
@@ -44,6 +46,7 @@ class TetraApp(GObject.GObject):
     def __init__(self):
         GObject.GObject.__init__(self)
         self.current_input = INPUT_COUNT - 1
+        self._automatic = True
 
         self.noise_baseline = DEFAULT_NOISE_BASELINE
         self.speak_up_threshold = SPEAK_UP_THRESHOLD
@@ -222,9 +225,14 @@ class TetraApp(GObject.GObject):
         except IndexError:
             pass
 
+    def set_automatic(self, auto=True):
+        self._automatic = auto
+
     def set_active_input(self, inputidx):
         isel = self.inputsel
         oldpad = isel.get_property ('active-pad')
+        if oldpad is None:
+            return
         pads = isel.sinkpads
         idx = inputidx % len(pads)
 
@@ -248,11 +256,20 @@ class TetraApp(GObject.GObject):
         i = e.pads.index(s)
         self.set_active_input(i)
 
-# XXX: 
+# XXX:
     def set_uvc_controls (self):
-        cmd = "uvcdynctrl -s 'Exposure, Auto Priority' 0 --device="
+        # we want this to have a constant framerate.
+        controls = {
+            'Power Line Frequency': 1,
+            'Exposure, Auto Priority': 0
+        }
+
+        cmd = "uvcdynctrl -s '%s' '%s' --device=%s"
         for src in self.video_inputs:
-            os.system(cmd + src.get_property('device'))
+            for ctrl, value in controls.items():
+                dev = src.get_property('device')
+                print '%s setting %s to %s' % (dev, ctrl, value)
+                os.system(cmd % (ctrl, str(value), dev))
 
     def start (self):
         self.set_uvc_controls()
@@ -264,8 +281,7 @@ class TetraApp(GObject.GObject):
         bus.enable_sync_message_emission()
         bus.connect("sync-message::element", self.bus_sync_message_cb)
 
-        if not MANUAL:
-            self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
+        self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
         GLib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
 
     def calibrate_bg_noise (self, *args):
@@ -278,6 +294,9 @@ class TetraApp(GObject.GObject):
 
 # XXX: devolver True, sino el timeout se destruye
     def process_levels (self):
+        if not self._automatic:
+            return True
+
         now = time.time()
         def do_switch (src):
             if src == self.current_input:
@@ -298,6 +317,9 @@ class TetraApp(GObject.GObject):
         avgs = []
         silent = True
         for idx,q in enumerate (self.audio_avg):
+            if len(q) == 0:
+                print 'empty level queue idx= ', idx
+                return True
             avg = sum (q) / (10*WINDOW_LENGTH)
             dp = (q[-1] - q[0])
             avgs.append ( (idx, avg) )
@@ -355,9 +377,35 @@ class TetraApp(GObject.GObject):
             self.emit('level', idx, peak)
         return True
 
+    def set_element_to_null (self, element):
+        global dump_idx
+        print 'SET EL TO NULL ', element
+        element.set_state(Gst.State.NULL)
+        self.pipeline.remove(element)
+        self.pipeline.set_state(Gst.State.PLAYING)
+        Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debugnull%d' % dump_idx)
+
+        dump_idx += 1
+        return False
+
+    def pad_block_cb(self, pad, probe_info, data=None):
+        #print pad, pad.get_parent(), pad.get_peer()
+        peer = pad.get_peer()
+        if peer is not None:
+            print 'UNLINK?'
+            pad.unlink(peer)
+            print 'ADD IDLE?'
+            GLib.timeout_add(0, self.set_element_to_null, pad.get_parent())
+        return Gst.PadProbeReturn.REMOVE
+
     def bus_message_cb (self, bus, msg, arg=None):
         if msg.type == Gst.MessageType.CLOCK_LOST:
             self.pipeline.set_state (Gst.State.PAUSED)
             self.pipeline.set_state (Gst.State.PLAYING)
+        elif msg.type == Gst.MessageType.ERROR:
+            #print 'Gst msg ERORR src: %s msg: %s' % (str(msg.src), msg.parse_error())
+            for pad in msg.src.pads:
+                pad.add_probe(Gst.PadProbeType.BLOCK, self.pad_block_cb, None)
+
         return True
 

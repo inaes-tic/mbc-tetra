@@ -13,6 +13,8 @@ from gi.repository import Gtk
 from gi.repository import Gdk
 from gi.repository import GdkX11
 
+import cairo
+
 GObject.threads_init()
 Gst.init(sys.argv)
 Gtk.init(sys.argv)
@@ -33,6 +35,7 @@ class MainWindow(object):
         self.window.fullscreen ()
 
         self.preview_box = self.builder.get_object('PreviewBox')
+        self.controls = self.builder.get_object('controls')
 
         sliders = []
         bars = []
@@ -53,19 +56,24 @@ class MainWindow(object):
             mute.connect ("toggled", self.mute_cb, idx)
 
             da = builder.get_object('preview')
-## XXX
+
             da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
             da.connect('button-press-event', self.preview_click_cb, idx)
-##             da.set_property ('height-request', 240)
-##             da.set_property ('width-request', 320)
             previews.append (da)
             self.preview_box.add(builder.get_object('PreviewBoxItem'))
 
 
-        self.previews = previews
-        self.previews.append (self.builder.get_object('LiveOut'))
         self.sliders = sliders
         self.bars = bars
+        self.previews = previews
+
+        live = self.builder.get_object('LiveOut')
+        live.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
+        live.connect('button-press-event', self.live_click_cb)
+        live.connect('draw', self.live_draw_cb)
+        self.previews.append (live)
+
+        self.builder.get_object('automatico').connect('clicked', self.auto_click_cb)
 
         self.window.show_all()
 
@@ -74,8 +82,16 @@ class MainWindow(object):
 
         app.connect('level', self.update_levels)
 
+    def auto_click_cb (self, widget):
+        self.app.set_automatic(widget.get_active())
+
+    def live_draw_cb (self, widget, cr):
+        return False
+
+    def live_click_cb (self, widget, event):
+        self.controls.set_visible(not self.controls.get_visible())
+
     def preview_click_cb (self, widget, event, idx):
-        print 'PREVIEW CLICK idx ', idx
         self.app.set_active_input (idx)
 
     def prepare_xwindow_id_cb (self, app, sink, idx):
@@ -112,6 +128,7 @@ def load_theme(theme):
 
 if __name__ == "__main__":
 
+    load_theme('theme-tetra-ambiance/gtk.css')
     app = TetraApp()
 
     w2 = MainWindow(app)
