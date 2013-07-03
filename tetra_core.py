@@ -16,6 +16,8 @@ from gi.repository import GLib
 GObject.threads_init()
 Gst.init(sys.argv)
 
+from input_sources import C920Input
+
 INPUT_COUNT = 2
 # seconds
 WINDOW_LENGTH = 1.5
@@ -26,16 +28,12 @@ DEFAULT_NOISE_BASELINE = -45
 NOISE_THRESHOLD = 6
 SPEAK_UP_THRESHOLD = 3
 
-## FIXME: tamano real mas luego.
-## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=320,rate=30,framerate=30/1')
-## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=1024,rate=30,framerate=30/1')
-VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=800,heigth=448,rate=30,framerate=30/1')
-AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,format=S16LE,rate=32000,channels=2')
-
-XV_SYNC=False
 MANUAL=False
 
+XV_SYNC=False
 dump_idx = 0
+
+
 
 class TetraApp(GObject.GObject):
     __gsignals__ = {
@@ -70,18 +68,12 @@ class TetraApp(GObject.GObject):
 
         self.asink = Gst.ElementFactory.make ('autoaudiosink', None)
 
-        self.audio_inputs = []
-        self.audio_queues = []
-        self.audio_tees = []
         self.audio_avg = []
         self.audio_peak = []
-        self.fasinks = []
 
+        self.inputs = []
         self.video_inputs = []
-        self.video_tees = []
-        self.video_queues = []
         self.volumes = []
-
         self.levels = []
         self.amixer = Gst.ElementFactory.make ('adder', None)
 
@@ -93,120 +85,27 @@ class TetraApp(GObject.GObject):
         q.link(self.asink)
 
         for idx in range(INPUT_COUNT):
-            dev = '/dev/video%d' % idx
-            props = {
-                'device': dev,
-            }
-            self.add_video_source('v4l2src', props)
+            vdev = '/dev/video%d' % idx
+            vprops = { 'device': vdev }
+            adev = 'hw:%d,0' % (idx+1)
+            aprops = {'device': adev}
 
-        for idx in range(INPUT_COUNT):
-### XXX: hw:0 interno en pc
-### XXX: poner regla fija en udev.
-            self.add_audio_source('alsasrc', {'device': 'hw:%d,0' % (idx+1)} )
-            continue
+            inp = C920Input(vprops, aprops)
+            self.pipeline.add(inp)
+            self.inputs.append(inp)
+
+            inp.link(self.amixer)
+            inp.link(self.inputsel)
+
+            self.preview_sinks.append(inp.xvsink)
+            self.volumes.append(inp.volume)
+            self.levels.append(inp.level)
+
+            self.audio_avg.append (deque (maxlen=WINDOW_LENGTH * 10))
+            self.audio_peak.append (deque (maxlen=WINDOW_LENGTH * 10))
 
 ### XXX: mejor nomenclatura
         self.preview_sinks.append (self.vsink)
-
-    def add_audio_source (self, sourcename=None, props=None):
-        # 10 samples per second
-        self.audio_avg.append (deque (maxlen=WINDOW_LENGTH * 10))
-        self.audio_peak.append (deque (maxlen=WINDOW_LENGTH * 10))
-
-        name = sourcename or 'audiotestsrc'
-        src = Gst.ElementFactory.make (name, None)
-        q0 = Gst.ElementFactory.make ('queue2', None)
-        q1 = Gst.ElementFactory.make ('queue2', None)
-        q2 = Gst.ElementFactory.make ('queue2', None)
-        tee = Gst.ElementFactory.make ('tee', None)
-        volume = Gst.ElementFactory.make ('volume', None)
-#
-        fasink = Gst.ElementFactory.make ('fakesink', None)
-        fasink.set_property ('sync', False)
-#
-        aconv = Gst.ElementFactory.make ('audioconvert', None)
-
-        flt = Gst.ElementFactory.make ('audiochebband', None)
-        flt.set_property ('lower-frequency', 400)
-        flt.set_property ('upper-frequency', 3500)
-        level = Gst.ElementFactory.make ('level', None)
-        level.set_property ("message", True)
-
-        self.pipeline.add (src)
-        self.pipeline.add (q0)
-        self.pipeline.add (q1)
-        self.pipeline.add (q2)
-        self.pipeline.add (tee)
-        self.pipeline.add (volume)
-        self.pipeline.add (fasink)
-        self.pipeline.add (aconv)
-        self.pipeline.add (flt)
-        self.pipeline.add (level)
-
-        if props:
-            for prop,val in props.items():
-                src.set_property (prop, val)
-
-        caps = AUDIO_CAPS
-        src.link_filtered (q0, caps)
-        q0.link (volume)
-        volume.link (tee)
-        tee.link (q1)
-        tee.link (q2)
-        q1.link (aconv)
-        q2.link_filtered(self.amixer, caps)
-        aconv.link (flt)
-        flt.link (level)
-        level.link(fasink)
-
-        self.audio_inputs.append (src)
-        self.audio_queues.append (q0)
-        self.audio_queues.append (q1)
-        self.audio_queues.append (q2)
-        self.audio_tees.append (tee)
-        self.levels.append (level)
-        self.volumes.append (volume)
-        self.fasinks.append (fasink)
-
-    def add_video_source (self, sourcename=None, props=None):
-        name = sourcename or 'v4l2src'
-        src = Gst.ElementFactory.make (name, None)
-        q0 = Gst.ElementFactory.make ('queue2', None)
-        tee = Gst.ElementFactory.make ('tee', None)
-        parse = Gst.ElementFactory.make ('jpegparse', None)
-        dec = Gst.ElementFactory.make ('jpegdec', None)
-        q1 = Gst.ElementFactory.make ('queue2', None)
-        q2 = Gst.ElementFactory.make ('queue2', None)
-        sink = Gst.ElementFactory.make ('xvimagesink', None)
-        sink.set_property('sync', XV_SYNC)
-
-        self.pipeline.add (src)
-        self.pipeline.add (sink)
-        self.pipeline.add (q0)
-        self.pipeline.add (q1)
-        self.pipeline.add (q2)
-        self.pipeline.add (tee)
-        self.pipeline.add (parse)
-        self.pipeline.add (dec)
-
-        if props:
-            for prop,val in props.items():
-                src.set_property(prop, val)
-
-# XXX:
-        #q0.set_property ('max-size-time', int(1*Gst.SECOND))
-        src.link(q0)
-        q0.link_filtered(parse, VIDEO_CAPS)
-        #parse.link(tee)
-        parse.link(dec)
-        dec.link(tee)
-        tee.link(q1)
-        tee.link(q2)
-        q1.link(self.inputsel)
-        q2.link(sink)
-
-        self.video_inputs.append(src)
-        self.preview_sinks.append (sink)
 
     def mute_channel (self, chanidx, mute):
         try:
@@ -258,18 +157,8 @@ class TetraApp(GObject.GObject):
 
 # XXX:
     def set_uvc_controls (self):
-        # we want this to have a constant framerate.
-        controls = {
-            'Power Line Frequency': 1,
-            'Exposure, Auto Priority': 0
-        }
-
-        cmd = "uvcdynctrl -s '%s' '%s' --device=%s"
-        for src in self.video_inputs:
-            for ctrl, value in controls.items():
-                dev = src.get_property('device')
-                print '%s setting %s to %s' % (dev, ctrl, value)
-                os.system(cmd % (ctrl, str(value), dev))
+        for src in self.inputs:
+            src.set_uvc_controls()
 
     def start (self):
         self.set_uvc_controls()
@@ -377,35 +266,17 @@ class TetraApp(GObject.GObject):
             self.emit('level', idx, peak)
         return True
 
-    def set_element_to_null (self, element):
-        global dump_idx
-        print 'SET EL TO NULL ', element
-        element.set_state(Gst.State.NULL)
-        self.pipeline.remove(element)
-        self.pipeline.set_state(Gst.State.PLAYING)
-        Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debugnull%d' % dump_idx)
-
-        dump_idx += 1
-        return False
-
-    def pad_block_cb(self, pad, probe_info, data=None):
-        #print pad, pad.get_parent(), pad.get_peer()
-        peer = pad.get_peer()
-        if peer is not None:
-            print 'UNLINK?'
-            pad.unlink(peer)
-            print 'ADD IDLE?'
-            GLib.timeout_add(0, self.set_element_to_null, pad.get_parent())
-        return Gst.PadProbeReturn.REMOVE
-
     def bus_message_cb (self, bus, msg, arg=None):
         if msg.type == Gst.MessageType.CLOCK_LOST:
             self.pipeline.set_state (Gst.State.PAUSED)
             self.pipeline.set_state (Gst.State.PLAYING)
         elif msg.type == Gst.MessageType.ERROR:
             #print 'Gst msg ERORR src: %s msg: %s' % (str(msg.src), msg.parse_error())
-            for pad in msg.src.pads:
-                pad.add_probe(Gst.PadProbeType.BLOCK, self.pad_block_cb, None)
+            try:
+                msg.src.get_parent().disconnect_source()
+            except AttributeError:
+                print 'Gst msg ERORR src: %s msg: %s' % (str(msg.src), msg.parse_error())
+                pass
 
         return True
 
