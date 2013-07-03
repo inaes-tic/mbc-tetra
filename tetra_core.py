@@ -1,3 +1,5 @@
+import logging
+
 import time
 import sys
 import os
@@ -139,7 +141,7 @@ class TetraApp(GObject.GObject):
         newpad = pads[idx]
         self.current_input = idx
         if idx != pads.index(oldpad):
-            print 'SET ACTIVE INPUT inputidx: ', inputidx, ' idx: ', idx
+            logging.info('SET ACTIVE INPUT inputidx: %d idx: %d', inputidx, idx)
             isel.set_property('active-pad', newpad)
 ##             s = Gst.Structure ('GstForceKeyUnit')
 ##             s.set_value ('running-time', -1)
@@ -180,7 +182,7 @@ class TetraApp(GObject.GObject):
             res += sum (q) / (10*WINDOW_LENGTH)
         res /= len (self.audio_avg)
         self.noise_baseline = res
-        print 'NOISE BG: ', res
+        logging.info('NOISE BG: %s', res)
 
 # XXX: devolver True, sino el timeout se destruye
     def process_levels (self):
@@ -193,11 +195,11 @@ class TetraApp(GObject.GObject):
                 return
             self.last_switch_time = now
             self.set_active_input (src)
-            print 'DO_SWITCH ', src
+            logging.info('DO_SWITCH %s', src)
         def do_rotate():
             self.last_switch_time = now
             self.set_active_input (self.current_input+1)
-            print 'DO_ROTATE '
+            logging.info('DO_ROTATE ')
 
         if (now - self.last_switch_time) < self.min_on_air_time:
             return True
@@ -208,7 +210,7 @@ class TetraApp(GObject.GObject):
         silent = True
         for idx,q in enumerate (self.audio_avg):
             if len(q) == 0:
-                print 'empty level queue idx= ', idx
+                logging.debug('empty level queue idx= ', idx)
                 return True
             avg = sum (q) / (10*WINDOW_LENGTH)
             dp = (q[-1] - q[0])
@@ -230,7 +232,7 @@ class TetraApp(GObject.GObject):
         peaks_over = filter (lambda x: x[1] > self.speak_up_threshold, dpeaks)
         if peaks_over:
             idx, peak = max (peaks_over, key= lambda x: x[1])
-            print ' PEAKS OVER ', peaks_over
+            logging.info('PEAKS OVER %s', peaks_over)
             if abs(avgs[idx][1] - self.noise_baseline) > NOISE_THRESHOLD:
                 do_switch (idx)
                 return True
@@ -242,10 +244,16 @@ class TetraApp(GObject.GObject):
         return True
 
     def source_removed_cb (self, source):
-        print 'SOURCE REMOVED CB'
-        self.pipeline.set_state (Gst.State.PLAYING)
+        logging.debug('SOURCE REMOVED CB')
+        #self.preview_sinks.remove(source.xvsink)
+        self.pipeline.remove(source)
+        logging.debug('SOURCE BIN REMOVED OK')
         for sink in self.preview_sinks:
-            sink.set_property('sync', XV_SYNC)
+            try:
+                sink.set_property('sync', XV_SYNC)
+            except:
+                continue
+        self.pipeline.set_state (Gst.State.PLAYING)
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_source_removed')
 
 
@@ -279,11 +287,11 @@ class TetraApp(GObject.GObject):
             self.pipeline.set_state (Gst.State.PAUSED)
             self.pipeline.set_state (Gst.State.PLAYING)
         elif msg.type == Gst.MessageType.ERROR:
-            #print 'Gst msg ERORR src: %s msg: %s' % (str(msg.src), msg.parse_error())
+            logging.error('Gst msg ERORR src: %s msg: %s', msg.src, msg.parse_error())
             try:
                 msg.src.get_parent().disconnect_source()
             except AttributeError:
-                print 'Gst msg ERORR src: %s msg: %s' % (str(msg.src), msg.parse_error())
+                logging.error('Gst msg ERORR src: %s msg: %s', msg.src, msg.parse_error())
                 pass
 
         return True

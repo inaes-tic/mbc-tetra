@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import logging
+
 import sys
 import time
 
@@ -128,6 +130,8 @@ def load_theme(theme):
 
 if __name__ == "__main__":
 
+    logging.basicConfig(level=logging.DEBUG)
+
     load_theme('theme-tetra-ambiance/gtk.css')
     app = TetraApp()
 
@@ -135,7 +139,7 @@ if __name__ == "__main__":
 
     app.start()
 
-    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug1')
+    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_start')
 
     Gtk.main()
     sys.exit(0)

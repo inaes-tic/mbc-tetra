@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import logging
+
 import time
 import sys
 import os
@@ -14,9 +16,6 @@ from gi.repository import GObject
 from gi.repository import Gst
 from gi.repository import GstVideo
 from gi.repository import GLib
-
-GObject.threads_init()
-Gst.init(sys.argv)
 
 ## FIXME: tamano real mas luego.
 ## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=320,rate=30,framerate=30/1')
@@ -65,7 +64,7 @@ class C920Input(Gst.Bin):
         cmd = "uvcdynctrl -s '%s' '%s' --device=%s"
         for ctrl, value in controls.items():
             dev = self.vsrc.get_property('device')
-            print '%s setting %s to %s' % (dev, ctrl, value)
+            logging.info('%s setting %s to %s' % (dev, ctrl, value))
             os.system(cmd % (ctrl, str(value), dev))
 
     def __add_video_source (self, props):
@@ -146,35 +145,38 @@ class C920Input(Gst.Bin):
         level.link(fasink)
 
     def set_element_to_null (self):
-        print 'SET EL TO NULL '
         parent = self.get_parent()
         if parent:
+            logging.debug('SET EL TO NULL ')
             self.set_state(Gst.State.NULL)
-            parent.remove(self)
             for element in self.children:
                 element.set_state(Gst.State.NULL)
-                self.remove(element)
-            self.emit('removed')
-            #Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debugnull%d' % dump_idx)
-        print 'SET EL TO NULL OK?'
+                #self.remove(element)
+
+        for pad in self.pads:
+            peer = pad.get_peer()
+            if peer is not None:
+                logging.debug('UNLINK PAD %s', pad)
+                pad.unlink(peer)
+                parent = peer.get_parent()
+                if parent:
+                    logging.debug('BEFORE PAD PARENT RELEASE PAD')
+                    parent.release_request_pad(peer)
+                    logging.debug('PAD PARENT RELEASE PAD OK')
+
+        logging.debug('SET EL TO NULL OK?')
+
+        self.emit('removed')
 
         return False
 
     def pad_block_cb(self, pad, probe_info, data=None):
-        #print pad, pad.get_parent(), pad.get_peer()
-        peer = pad.get_peer()
-        parent = peer.get_parent()
-        if peer is not None:
-            print 'UNLINK?'
-            pad.unlink(peer)
-            parent.release_request_pad(peer)
-
         ok = True
         for pad in self.pads:
             if pad.is_blocked() == False:
                 ok = False
         if ok:
-            print 'ADD IDLE?'
+            logging.debug('PAD BLOCK ADD IDLE')
             GLib.timeout_add(0, self.set_element_to_null)
 
         return Gst.PadProbeReturn.REMOVE
@@ -186,6 +188,9 @@ class C920Input(Gst.Bin):
 
 
 if __name__=='__main__':
+    GObject.threads_init()
+    Gst.init(sys.argv)
+
     aprops = { }
     vprops = { }
 
