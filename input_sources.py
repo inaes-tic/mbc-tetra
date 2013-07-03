@@ -30,6 +30,9 @@ class GeneralInputError(Exception):
     pass
 
 class C920Input(Gst.Bin):
+    __gsignals__ = {
+       "removed": (GObject.SIGNAL_RUN_FIRST, None, []),
+    }
     def __init__(self, video_props, audio_props, name=None):
         Gst.Bin.__init__(self)
         if name:
@@ -143,32 +146,37 @@ class C920Input(Gst.Bin):
         level.link(fasink)
 
     def set_element_to_null (self):
-        for pad in self.pads:
-            if pad.is_blocked() == False:
-                return True
-
         print 'SET EL TO NULL '
-
         parent = self.get_parent()
-        # this can be called multiple times, even after removing ourselves.
         if parent:
             self.set_state(Gst.State.NULL)
             parent.remove(self)
             for element in self.children:
+                element.set_state(Gst.State.NULL)
                 self.remove(element)
-            parent.set_state(Gst.State.PLAYING)
+            self.emit('removed')
             #Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debugnull%d' % dump_idx)
+        print 'SET EL TO NULL OK?'
 
         return False
 
     def pad_block_cb(self, pad, probe_info, data=None):
         #print pad, pad.get_parent(), pad.get_peer()
         peer = pad.get_peer()
+        parent = peer.get_parent()
         if peer is not None:
             print 'UNLINK?'
             pad.unlink(peer)
+            parent.release_request_pad(peer)
+
+        ok = True
+        for pad in self.pads:
+            if pad.is_blocked() == False:
+                ok = False
+        if ok:
             print 'ADD IDLE?'
             GLib.timeout_add(0, self.set_element_to_null)
+
         return Gst.PadProbeReturn.REMOVE
 
     def disconnect_source(self):

@@ -91,6 +91,7 @@ class TetraApp(GObject.GObject):
             aprops = {'device': adev}
 
             inp = C920Input(vprops, aprops)
+            inp.connect('removed', self.source_removed_cb)
             self.pipeline.add(inp)
             self.inputs.append(inp)
 
@@ -239,6 +240,13 @@ class TetraApp(GObject.GObject):
 
 ###        print ' AVGs ', avgs , ' dPEAKs ', dpeaks
         return True
+
+    def source_removed_cb (self, source):
+        print 'SOURCE REMOVED CB'
+        self.pipeline.set_state (Gst.State.PLAYING)
+        for sink in self.preview_sinks:
+            sink.set_property('sync', XV_SYNC)
+        Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_source_removed')
 
 
     def bus_sync_message_cb (self, bus, msg):
