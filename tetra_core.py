@@ -20,7 +20,7 @@ Gst.init(sys.argv)
 
 from input_sources import C920Input
 
-INPUT_COUNT = 2
+INPUT_COUNT = 3
 # seconds
 WINDOW_LENGTH = 1.5
 UPDATE_INTERVAL = .25
@@ -39,9 +39,10 @@ dump_idx = 0
 
 class TetraApp(GObject.GObject):
     __gsignals__ = {
-        "level": (GObject.SIGNAL_RUN_FIRST, None, (int,float)),
+       "level": (GObject.SIGNAL_RUN_FIRST, None, (int,float)),
        "prepare-xwindow-id": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
        "prepare-window-handle": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
+       "source-disconnected": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
     }
     def __init__(self):
         GObject.GObject.__init__(self)
@@ -130,6 +131,13 @@ class TetraApp(GObject.GObject):
     def set_automatic(self, auto=True):
         self._automatic = auto
 
+    def set_active_input_by_source(self, source):
+        try:
+            idx = self.inputs.index(source)
+            self.set_active_input(idx)
+        except IndexError:
+            pass
+
     def set_active_input(self, inputidx):
         isel = self.inputsel
         oldpad = isel.get_property ('active-pad')
@@ -165,13 +173,14 @@ class TetraApp(GObject.GObject):
 
     def start (self):
         self.set_uvc_controls()
-        self.pipeline.set_state (Gst.State.PLAYING)
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
         bus.connect("message::element", self.bus_element_cb)
         bus.connect("message", self.bus_message_cb)
         bus.enable_sync_message_emission()
         bus.connect("sync-message::element", self.bus_sync_message_cb)
+
+        self.pipeline.set_state (Gst.State.PLAYING)
 
         self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
         GLib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
@@ -210,7 +219,7 @@ class TetraApp(GObject.GObject):
         silent = True
         for idx,q in enumerate (self.audio_avg):
             if len(q) == 0:
-                logging.debug('empty level queue idx= ', idx)
+                logging.debug('empty level queue idx= %d', idx)
                 return True
             avg = sum (q) / (10*WINDOW_LENGTH)
             dp = (q[-1] - q[0])
@@ -244,16 +253,28 @@ class TetraApp(GObject.GObject):
         return True
 
     def source_removed_cb (self, source):
+        try:
+            idx = self.inputs.index(source)
+        except ValueError:
+            return True
         logging.debug('SOURCE REMOVED CB')
-        #self.preview_sinks.remove(source.xvsink)
         self.pipeline.remove(source)
+        self.audio_avg.pop(idx)
+        self.audio_peak.pop(idx)
+        self.preview_sinks.pop(idx)
+        self.inputs.pop(idx)
         logging.debug('SOURCE BIN REMOVED OK')
         for sink in self.preview_sinks:
             try:
                 sink.set_property('sync', XV_SYNC)
             except:
                 continue
+        self.emit('source-disconnected', source, idx)
+        for el in self.pipeline.children:
+            el.set_state (Gst.State.PLAYING)
         self.pipeline.set_state (Gst.State.PLAYING)
+        self.set_active_input(0)
+
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_source_removed')
 
 
@@ -272,14 +293,23 @@ class TetraApp(GObject.GObject):
 
         s = msg.get_structure()
         if s.get_name() == "level":
-            idx = self.levels.index (msg.src)
-            arms = s.get_value('rms')
-            apeak = s.get_value('peak')
-            rms = sum (arms) / len (arms)
-            peak = sum (apeak) / len (apeak)
-            self.audio_avg[idx].append (rms)
-            self.audio_peak[idx].append (peak)
-            self.emit('level', idx, peak)
+            try:
+                idx = self.inputs.index(msg.src.get_parent())
+                arms = s.get_value('rms')
+                apeak = s.get_value('peak')
+                larms = len(arms)
+                lapeak = len(arms)
+                if larms and lapeak:
+                    rms = sum (arms) / len (arms)
+                    peak = sum (apeak) / len (apeak)
+                    self.audio_avg[idx].append (rms)
+                    self.audio_peak[idx].append (peak)
+                    #logging.debug('LEVEL idx %d, avg %f peak %f', idx, rms, peak)
+                    self.emit('level', idx, peak)
+            except IndexError:
+                return True
+            except ValueError:
+                return True
         return True
 
     def bus_message_cb (self, bus, msg, arg=None):
@@ -291,8 +321,8 @@ class TetraApp(GObject.GObject):
             try:
                 msg.src.get_parent().disconnect_source()
             except AttributeError:
-                logging.error('Gst msg ERORR src: %s msg: %s', msg.src, msg.parse_error())
-                pass
+                logging.error('Gst msg CANNOT DISCONNECT SOURCE src: %s msg: %s', msg.src, msg.parse_error())
+                return True
 
         return True
 

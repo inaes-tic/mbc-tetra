@@ -43,7 +43,7 @@ class MainWindow(object):
         bars = []
         previews = []
 
-        for idx in range(INPUT_COUNT):
+        for idx, source in enumerate(app.inputs):
             builder = Gtk.Builder ()
             builder.add_objects_from_file ('preview_box.ui', ['PreviewBoxItem'])
 
@@ -60,7 +60,7 @@ class MainWindow(object):
             da = builder.get_object('preview')
 
             da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
-            da.connect('button-press-event', self.preview_click_cb, idx)
+            da.connect('button-press-event', self.preview_click_cb, source)
             previews.append (da)
             self.preview_box.add(builder.get_object('PreviewBoxItem'))
 
@@ -83,6 +83,7 @@ class MainWindow(object):
             sink.set_window_handle(da.get_property('window').get_xid())
 
         app.connect('level', self.update_levels)
+        app.connect('source-disconnected', self.source_disconnected_cb)
 
     def auto_click_cb (self, widget):
         self.app.set_automatic(widget.get_active())
@@ -93,8 +94,8 @@ class MainWindow(object):
     def live_click_cb (self, widget, event):
         self.controls.set_visible(not self.controls.get_visible())
 
-    def preview_click_cb (self, widget, event, idx):
-        self.app.set_active_input (idx)
+    def preview_click_cb (self, widget, event, source):
+        self.app.set_active_input_by_source (source)
 
     def prepare_xwindow_id_cb (self, app, sink, idx):
         return True
@@ -102,6 +103,15 @@ class MainWindow(object):
         sink.set_property ("force-aspect-ratio", True)
         sink.set_xwindow_id (self.previews[idx].window.xid)
         Gdk.threads_leave ()
+
+    def source_disconnected_cb (self, app, source, idx):
+        try:
+            child = self.preview_box.get_children()[idx]
+            self.preview_box.remove(child)
+            child.destroy()
+        except IndexError:
+            pass
+        return True
 
     def update_levels (self, app, idx, peak):
         Gdk.threads_enter ()

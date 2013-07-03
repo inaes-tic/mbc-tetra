@@ -172,7 +172,9 @@ class C920Input(Gst.Bin):
 
     def pad_block_cb(self, pad, probe_info, data=None):
         ok = True
+        logging.debug('PAD BLOCK CB')
         for pad in self.pads:
+            logging.debug('PAD BLOCK CB, PAD IS BLOCKED? %s %s', pad.is_blocked(), pad)
             if pad.is_blocked() == False:
                 ok = False
         if ok:
@@ -182,8 +184,10 @@ class C920Input(Gst.Bin):
         return Gst.PadProbeReturn.REMOVE
 
     def disconnect_source(self):
+        logging.debug('DISCONNECT SOURCE')
         for pad in self.pads:
-            pad.add_probe(Gst.PadProbeType.BLOCK, self.pad_block_cb, None)
+            logging.debug('DISCONNECT SOURCE ADD PAD PROBE FOR %s PAD IS BLOCKED? %s', pad, pad.is_blocked())
+            pad.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM | Gst.PadProbeType.BLOCK_UPSTREAM, self.pad_block_cb, None)
 
 
 
