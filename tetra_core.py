@@ -33,7 +33,6 @@ SPEAK_UP_THRESHOLD = 3
 MANUAL=False
 
 XV_SYNC=False
-dump_idx = 0
 
 
 
@@ -180,21 +179,34 @@ class TetraApp(GObject.GObject):
         bus.enable_sync_message_emission()
         bus.connect("sync-message::element", self.bus_sync_message_cb)
 
-        self.pipeline.set_state (Gst.State.PLAYING)
+        ret = self.pipeline.set_state (Gst.State.PLAYING)
+        logging.debug('STARTING ret= %s', ret)
 
         self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
         GLib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
 
     def calibrate_bg_noise (self, *args):
-        res = 0
-        for q in self.audio_avg:
-            res += sum (q) / (10*WINDOW_LENGTH)
-        res /= len (self.audio_avg)
-        self.noise_baseline = res
-        logging.info('NOISE BG: %s', res)
+        bgnoise = 0
+        lavg = len (self.audio_avg)
+        if lavg != 0:
+            for q in self.audio_avg:
+                bgnoise += sum (q) / (10*WINDOW_LENGTH)
+            bgnoise /= lavg
+        else:
+            bgnoise = DEFAULT_NOISE_BASELINE
+        self.noise_baseline = bgnoise
+        logging.info('NOISE BG: %s', bgnoise)
 
 # XXX: devolver True, sino el timeout se destruye
     def process_levels (self):
+        # Until I get to code a better and more mathy algorithm this is how it works:
+        # If all the sources are within a band from the background noise we switch to the next.
+        # If all of them are above and within a band from the combined average level we also switch to the next.
+        # If one increases the average level above certain threshold and it is also above the background
+        # noise we switch to that.
+        # Else, we switch to the one that has the maximum level in the current window.
+        # Above all, no decision is taken if we are within less than the minimum on air time from the
+        # last switching time or manual control is desired.
         if not self._automatic:
             return True
 
@@ -204,18 +216,18 @@ class TetraApp(GObject.GObject):
                 return
             self.last_switch_time = now
             self.set_active_input (src)
-            logging.info('DO_SWITCH %s', src)
+            logging.debug('DO_SWITCH %s', src)
         def do_rotate():
             self.last_switch_time = now
             self.set_active_input (self.current_input+1)
-            logging.info('DO_ROTATE ')
+            logging.debug('DO_ROTATE')
 
         if (now - self.last_switch_time) < self.min_on_air_time:
             return True
-###        print 'PROCESS current_input ', self.current_input
 
         dpeaks = []
         avgs = []
+        above = []
         silent = True
         for idx,q in enumerate (self.audio_avg):
             if len(q) == 0:
@@ -227,25 +239,35 @@ class TetraApp(GObject.GObject):
             dpeaks.append ( (idx, dp) )
             if abs (avg-self.noise_baseline) > NOISE_THRESHOLD:
                 silent = False
+                above.append( (idx, avg) )
         if silent:
+            logging.info('ALL INPUTS SILENT, ROTATING')
             do_rotate ()
             return True
 
-##        for idx,q in enumerate (self.audio_avg):
-##            dp = []
-##            for (x1,x2) in zip (q, list(q)[1:]):
-##                dp.append (x2-x1)
-##            dpeaks.append ( (idx, sum(dp) / (10*(WINDOW_LENGTH-1))) )
+        if len(above) == len(avgs):
+            tavg = sum(x[1] for x in avgs)
+            tavg /= len(above)
+            ok = True
+            for idx, avg in avgs:
+                if abs(avg-tavg) > self.speak_up_threshold:
+                    ok = False
+            if ok:
+                logging.info('EVERYBODY IS TALKING(?), ROTATING')
+                do_rotate()
+                return True
 
 # ver caso si mas de uno pasa umbral.
         peaks_over = filter (lambda x: x[1] > self.speak_up_threshold, dpeaks)
         if peaks_over:
             idx, peak = max (peaks_over, key= lambda x: x[1])
-            logging.info('PEAKS OVER %s', peaks_over)
+            logging.debug('PEAKS OVER %s', peaks_over)
             if abs(avgs[idx][1] - self.noise_baseline) > NOISE_THRESHOLD:
+                logging.info('NEW VOICE, SWITCHING TO %d', idx)
                 do_switch (idx)
                 return True
 
+        logging.info('SWITCHING TO THE LOUDEST %d', idx)
         idx, avg = max (avgs, key= lambda x: x[1])
         do_switch (idx)
 
@@ -257,7 +279,7 @@ class TetraApp(GObject.GObject):
             idx = self.inputs.index(source)
         except ValueError:
             return True
-        logging.debug('SOURCE REMOVED CB')
+        logging.debug('SOURCE REMOVED CB %s', source)
         self.pipeline.remove(source)
         self.audio_avg.pop(idx)
         self.audio_peak.pop(idx)
@@ -270,10 +292,8 @@ class TetraApp(GObject.GObject):
             except:
                 continue
         self.emit('source-disconnected', source, idx)
-        for el in self.pipeline.children:
-            el.set_state (Gst.State.PLAYING)
         self.pipeline.set_state (Gst.State.PLAYING)
-        self.set_active_input(0)
+        logging.debug('SOURCE REMOVED CB ENDED')
 
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_source_removed')
 
@@ -318,11 +338,13 @@ class TetraApp(GObject.GObject):
             self.pipeline.set_state (Gst.State.PLAYING)
         elif msg.type == Gst.MessageType.ERROR:
             logging.error('Gst msg ERORR src: %s msg: %s', msg.src, msg.parse_error())
-            try:
-                msg.src.get_parent().disconnect_source()
-            except AttributeError:
-                logging.error('Gst msg CANNOT DISCONNECT SOURCE src: %s msg: %s', msg.src, msg.parse_error())
-                return True
+            logging.debug('Gst msg ERROR CURRENT STATE %s', self.pipeline.get_state(0))
+            parent = msg.src.get_parent()
+            if parent in self.inputs:
+                idx = self.inputs.index(msg.src.get_parent())
+                # input-selector doesn't quite like when you remove/unlink the active pad.
+                self.set_active_input(idx+1)
+                parent.disconnect_source()
 
         return True
 

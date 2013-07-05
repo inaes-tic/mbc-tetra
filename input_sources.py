@@ -144,14 +144,13 @@ class C920Input(Gst.Bin):
         flt.link (level)
         level.link(fasink)
 
-    def set_element_to_null (self):
+    def __unlink_and_set_to_null (self):
         parent = self.get_parent()
         if parent:
-            logging.debug('SET EL TO NULL ')
+            logging.debug('SET EL TO NULL')
             self.set_state(Gst.State.NULL)
             for element in self.children:
                 element.set_state(Gst.State.NULL)
-                #self.remove(element)
 
         for pad in self.pads:
             peer = pad.get_peer()
@@ -159,7 +158,12 @@ class C920Input(Gst.Bin):
                 logging.debug('UNLINK PAD %s', pad)
                 pad.unlink(peer)
                 parent = peer.get_parent()
-                if parent:
+
+                presence = None
+                tmpl = peer.get_pad_template()
+                if tmpl:
+                    presence = tmpl.presence
+                if parent and (presence == Gst.PadPresence.REQUEST):
                     logging.debug('BEFORE PAD PARENT RELEASE PAD')
                     parent.release_request_pad(peer)
                     logging.debug('PAD PARENT RELEASE PAD OK')
@@ -179,16 +183,33 @@ class C920Input(Gst.Bin):
                 ok = False
         if ok:
             logging.debug('PAD BLOCK ADD IDLE')
-            GLib.timeout_add(0, self.set_element_to_null)
+            GLib.timeout_add(0, self.__unlink_and_set_to_null)
 
         return Gst.PadProbeReturn.REMOVE
 
     def disconnect_source(self):
-        logging.debug('DISCONNECT SOURCE')
-        for pad in self.pads:
-            logging.debug('DISCONNECT SOURCE ADD PAD PROBE FOR %s PAD IS BLOCKED? %s', pad, pad.is_blocked())
-            pad.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM | Gst.PadProbeType.BLOCK_UPSTREAM, self.pad_block_cb, None)
+        # in order to properly remove ourselves from the pipeline we need to block
+        # our pads, when all of them are blocked we can safely unlink *from the main thread*
+        # (that's what the timeout_add() is for).
+        # However, if no buffers are currently flowing (or won't be) the probe never succedes.
+        # Common wisdom suggest to use a custom event but, if we are in a null state
+        # (like, we tried to open a non-existing device upon starting), this will also fail.
+        # So in that case we just unlink and hope for the best.
+        state = self.get_state(0)
+        logging.debug('DISCONNECT SOURCE CURRENT STATE %s', state)
+        if state[1] == Gst.State.NULL:
+            GLib.timeout_add(0, self.__unlink_and_set_to_null)
+            return
 
+        ok = True
+        for pad in self.pads:
+            if pad.is_blocked() == False:
+                ok = False
+            logging.debug('DISCONNECT SOURCE ADD PAD PROBE FOR %s PAD IS BLOCKED? %s PAD IS LINKED? %s', pad, pad.is_blocked(), pad.is_linked())
+            pad.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM | Gst.PadProbeType.BLOCK_UPSTREAM, self.pad_block_cb, None)
+        if ok:
+            logging.debug('PAD BLOCK ADD IDLE')
+            GLib.timeout_add(0, self.__unlink_and_set_to_null)
 
 
 if __name__=='__main__':

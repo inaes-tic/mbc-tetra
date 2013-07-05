@@ -108,6 +108,7 @@ class MainWindow(object):
         try:
             child = self.preview_box.get_children()[idx]
             self.preview_box.remove(child)
+            self.bars.pop(idx)
             child.destroy()
         except IndexError:
             pass
