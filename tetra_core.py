@@ -263,7 +263,8 @@ class TetraApp(GObject.GObject):
                 return True
 
 # ver caso si mas de uno pasa umbral.
-        peaks_over = filter (lambda x: x[1] > self.speak_up_threshold, dpeaks)
+# un muting a channel gives a 600 something peak (from minus infinity to the current level)
+        peaks_over = filter (lambda x: (x[1] > self.speak_up_threshold) and (x[1] < 60), dpeaks)
         if peaks_over:
             idx, peak = max (peaks_over, key= lambda x: x[1])
             logging.debug('PEAKS OVER %s', peaks_over)
