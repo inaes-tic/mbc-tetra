@@ -39,35 +39,16 @@ class MainWindow(object):
         self.preview_box = self.builder.get_object('PreviewBox')
         self.controls = self.builder.get_object('controls')
 
-        sliders = []
-        bars = []
-        previews = []
+        self.sliders = []
+        self.bars = []
+        self.previews = []
+
+        self.window.show_all()
 
         for idx, source in enumerate(app.inputs):
-            builder = Gtk.Builder ()
-            builder.add_objects_from_file ('preview_box.ui', ['PreviewBoxItem'])
-
-            slider = builder.get_object ('volume')
-            slider.connect ("value-changed", self.slider_cb, idx)
-            sliders.append (slider)
-
-            bar = builder.get_object ('peak')
-            bars.append (bar)
-
-            mute = builder.get_object ('mute')
-            mute.connect ("toggled", self.mute_cb, idx)
-
-            da = builder.get_object('preview')
-
-            da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
-            da.connect('button-press-event', self.preview_click_cb, source)
-            previews.append (da)
-            self.preview_box.add(builder.get_object('PreviewBoxItem'))
+            self.add_source(source)
 
 
-        self.sliders = sliders
-        self.bars = bars
-        self.previews = previews
 
         live = self.builder.get_object('LiveOut')
         live.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
@@ -77,13 +58,32 @@ class MainWindow(object):
 
         self.builder.get_object('automatico').connect('clicked', self.auto_click_cb)
 
-        self.window.show_all()
-
-        for da, sink in zip(previews, app.preview_sinks):
-            sink.set_window_handle(da.get_property('window').get_xid())
+        app.vsink.set_window_handle(live.get_property('window').get_xid())
 
         app.connect('level', self.update_levels)
         app.connect('source-disconnected', self.source_disconnected_cb)
+
+    def add_source(self, source):
+        builder = Gtk.Builder ()
+        builder.add_objects_from_file ('preview_box.ui', ['PreviewBoxItem'])
+
+        slider = builder.get_object ('volume')
+        slider.connect ("value-changed", self.slider_cb, source)
+
+        bar = builder.get_object ('peak')
+        self.bars.append (bar)
+
+        mute = builder.get_object ('mute')
+        mute.connect ("toggled", self.mute_cb, source)
+
+        da = builder.get_object('preview')
+        da.show()
+
+        da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
+        da.connect('button-press-event', self.preview_click_cb, source)
+        self.preview_box.add(builder.get_object('PreviewBoxItem'))
+
+        source.xvsink.set_window_handle(da.get_property('window').get_xid())
 
     def auto_click_cb (self, widget):
         self.app.set_automatic(widget.get_active())
@@ -125,10 +125,12 @@ class MainWindow(object):
         Gdk.threads_leave ()
         return True
 
-    def mute_cb(self, toggle, chan):
+    def mute_cb(self, toggle, source):
+        chan = self.app.inputs.index(source)
         self.app.mute_channel (chan, toggle.get_active())
 
-    def slider_cb(self, slider, value, chan):
+    def slider_cb(self, slider, value, source):
+        chan = self.app.inputs.index(source)
         self.app.set_channel_volume (chan, value)
 
 

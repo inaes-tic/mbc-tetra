@@ -93,22 +93,27 @@ class TetraApp(GObject.GObject):
             aprops = {'device': adev}
 
             inp = C920Input(vprops, aprops)
-            inp.connect('removed', self.source_removed_cb)
-            self.pipeline.add(inp)
-            self.inputs.append(inp)
-
-            inp.link(self.amixer)
-            inp.link(self.inputsel)
-
-            self.preview_sinks.append(inp.xvsink)
-            self.volumes.append(inp.volume)
-            self.levels.append(inp.level)
-
-            self.audio_avg.append (deque (maxlen=WINDOW_LENGTH * 10))
-            self.audio_peak.append (deque (maxlen=WINDOW_LENGTH * 10))
+            self.add_input_source(inp)
 
 ### XXX: mejor nomenclatura
         self.preview_sinks.append (self.vsink)
+
+    def add_input_source(self, source):
+        source.connect('removed', self.source_removed_cb)
+        self.pipeline.add(source)
+        self.inputs.append(source)
+
+        source.link(self.amixer)
+        source.link(self.inputsel)
+
+        self.preview_sinks.append(source.xvsink)
+        self.volumes.append(source.volume)
+        self.levels.append(source.level)
+
+        self.audio_avg.append (deque (maxlen=WINDOW_LENGTH * 10))
+        self.audio_peak.append (deque (maxlen=WINDOW_LENGTH * 10))
+
+        source.set_state(self.pipeline.get_state(0)[1])
 
     def mute_channel (self, chanidx, mute):
         try:
