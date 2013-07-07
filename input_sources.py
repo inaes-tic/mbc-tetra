@@ -8,6 +8,7 @@ import os
 from collections import deque
 from itertools import ifilter
 
+import pyudev
 
 import gi
 gi.require_version('Gst', '1.0')
@@ -16,6 +17,11 @@ from gi.repository import GObject
 from gi.repository import Gst
 from gi.repository import GstVideo
 from gi.repository import GLib
+
+if not Gst.is_initialized():
+    Gst.init(sys.argv)
+
+GObject.threads_init()
 
 ## FIXME: tamano real mas luego.
 ## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=320,rate=30,framerate=30/1')
@@ -211,28 +217,61 @@ class C920Input(Gst.Bin):
             logging.debug('PAD BLOCK ADD IDLE')
             GLib.timeout_add(0, self.__unlink_and_set_to_null)
 
+def C920Probe(device, context):
+    model = device.get('ID_MODEL', None)
+    if model != u'HD_Pro_Webcam_C920':
+        return False
+
+    vdev = device.get('DEVNAME', None)
+    adev = None
+
+    serial = device['ID_SERIAL_SHORT']
+    sounds = context.list_devices().match_property('ID_SERIAL_SHORT', serial).match_subsystem('sound')
+    for snd in sounds:
+        if 'id' in snd.attributes:
+            adev = snd.attributes['id']
+            break
+    if adev and vdev:
+        vprops = {'device': vdev}
+        aprops = {'device': 'hw:CARD=%s' % adev}
+        return (C920Input, {'video_props':vprops, 'audio_props':aprops})
+
+    return False
+
+ALL_PROBES = [C920Probe]
+
+def get_devices():
+    devices = []
+
+    context = pyudev.Context()
+    cameras = context.list_devices().match_subsystem('video4linux')
+    for device in cameras:
+        for probe in ALL_PROBES:
+            ret = probe(device, context)
+            if ret:
+                devices.append(ret)
+                break
+
+    return devices
 
 if __name__=='__main__':
-    GObject.threads_init()
-    Gst.init(sys.argv)
-
-    aprops = { }
-    vprops = { }
+    devices = get_devices()
 
     p = Gst.Pipeline.new('P')
+    for (src, props) in devices:
+        print src, props
+        src = src(**props)
 
-    inp = C920Input(vprops, aprops)
+        vsink = Gst.ElementFactory.make('xvimagesink', None)
+        vsink.set_property('sync', False)
+        asink = Gst.ElementFactory.make('autoaudiosink', None)
 
-    vsink = Gst.ElementFactory.make('xvimagesink', None)
-    vsink.set_property('sync', False)
-    asink = Gst.ElementFactory.make('fakesink', None)
+        p.add(src)
+        p.add(asink)
+        p.add(vsink)
 
-    p.add(inp)
-    p.add(asink)
-    p.add(vsink)
-
-    inp.link(asink)
-    inp.link(vsink)
+        src.link(asink)
+        src.link(vsink)
 
     p.set_state(Gst.State.PLAYING)
     Gst.debug_bin_to_dot_file(p, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_input')
