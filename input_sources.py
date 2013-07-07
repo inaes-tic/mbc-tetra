@@ -217,6 +217,8 @@ class C920Input(Gst.Bin):
             logging.debug('PAD BLOCK ADD IDLE')
             GLib.timeout_add(0, self.__unlink_and_set_to_null)
 
+GObject.type_register(C920Input)
+
 def C920Probe(device, context):
     model = device.get('ID_MODEL', None)
     if model != u'HD_Pro_Webcam_C920':
@@ -240,22 +242,53 @@ def C920Probe(device, context):
 
 ALL_PROBES = [C920Probe]
 
-def get_devices():
-    devices = []
 
-    context = pyudev.Context()
-    cameras = context.list_devices().match_subsystem('video4linux')
-    for device in cameras:
-        for probe in ALL_PROBES:
-            ret = probe(device, context)
-            if ret:
-                devices.append(ret)
-                break
+class InputMonitor(GObject.GObject):
+    __gsignals__ = {
+       "added": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT]),
+    }
+    def __init__(self):
+        from pyudev.glib import MonitorObserver
+        GObject.GObject.__init__(self)
+        self.context = pyudev.Context()
+        self.monitor = pyudev.Monitor.from_netlink(self.context)
+        self.monitor.filter_by(subsystem='video4linux')
+        self.observer = MonitorObserver(self.monitor)
+        self.observer.connect('device-event', self.__device_event)
 
-    return devices
+    def start(self):
+        self.monitor.start()
+
+    def __device_event(self, observer, device):
+        if device.action == 'add':
+            for probe in ALL_PROBES:
+                ret = probe(device, self.context)
+                if ret:
+                    self.emit('added', ret[0], ret[1])
+                    return
+
+    def get_devices(self):
+        devices = []
+
+        context = pyudev.Context()
+        cameras = context.list_devices().match_subsystem('video4linux')
+        for device in cameras:
+            for probe in ALL_PROBES:
+                ret = probe(device, context)
+                if ret:
+                    devices.append(ret)
+                    break
+
+        return devices
 
 if __name__=='__main__':
-    devices = get_devices()
+    def add_cb(imon, arg, arg1):
+        print 'ADD CB ', imon, arg, arg1
+
+    imon = InputMonitor()
+    imon.connect('added', add_cb)
+    imon.start()
+    devices = imon.get_devices()
 
     p = Gst.Pipeline.new('P')
     for (src, props) in devices:

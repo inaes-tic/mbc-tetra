@@ -20,7 +20,7 @@ Gst.init(sys.argv)
 
 from input_sources import C920Input
 
-INPUT_COUNT = 3
+INPUT_COUNT = 0
 # seconds
 WINDOW_LENGTH = 1.5
 UPDATE_INTERVAL = .25
@@ -47,6 +47,7 @@ class TetraApp(GObject.GObject):
         GObject.GObject.__init__(self)
         self.current_input = INPUT_COUNT - 1
         self._automatic = True
+        self._initialized = False
 
         self.noise_baseline = DEFAULT_NOISE_BASELINE
         self.speak_up_threshold = SPEAK_UP_THRESHOLD
@@ -85,15 +86,6 @@ class TetraApp(GObject.GObject):
         self.pipeline.add(self.asink)
         self.amixer.link(q)
         q.link(self.asink)
-
-        for idx in range(INPUT_COUNT):
-            vdev = '/dev/video%d' % idx
-            vprops = { 'device': vdev }
-            adev = 'hw:%d,0' % (idx+1)
-            aprops = {'device': adev}
-
-            inp = C920Input(vprops, aprops)
-            self.add_input_source(inp)
 
 ### XXX: mejor nomenclatura
         self.preview_sinks.append (self.vsink)
@@ -175,8 +167,7 @@ class TetraApp(GObject.GObject):
         for src in self.inputs:
             src.set_uvc_controls()
 
-    def start (self):
-        self.set_uvc_controls()
+    def __initialize(self):
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
         bus.connect("message::element", self.bus_element_cb)
@@ -184,10 +175,16 @@ class TetraApp(GObject.GObject):
         bus.enable_sync_message_emission()
         bus.connect("sync-message::element", self.bus_sync_message_cb)
 
+        self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
+
+        self._initialized = True
+
+    def start(self):
+        if not self._initialized:
+            self.__initialize()
+        self.set_uvc_controls()
         ret = self.pipeline.set_state (Gst.State.PLAYING)
         logging.debug('STARTING ret= %s', ret)
-
-        self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
         GLib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
 
     def calibrate_bg_noise (self, *args):

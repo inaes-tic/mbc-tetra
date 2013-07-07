@@ -9,6 +9,7 @@ import gi
 gi.require_version('Gst', '1.0')
 
 from gi.repository import GObject
+from gi.repository import GLib
 from gi.repository import Gst
 from gi.repository import GstVideo
 from gi.repository import Gtk
@@ -24,10 +25,12 @@ Gdk.init(sys.argv)
 
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
+import input_sources
 
 class MainWindow(object):
     def __init__(self, app):
         self.app = app
+        self.imon = input_sources.InputMonitor()
 
         self.builder = Gtk.Builder ()
         self.builder.add_from_file ('main_ui_2.ui')
@@ -45,10 +48,10 @@ class MainWindow(object):
 
         self.window.show_all()
 
-        for idx, source in enumerate(app.inputs):
+        for (src,props) in self.imon.get_devices():
+            source = src(**props)
             self.add_source(source)
-
-
+            self.app.add_input_source(source)
 
         live = self.builder.get_object('LiveOut')
         live.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
@@ -62,6 +65,19 @@ class MainWindow(object):
 
         app.connect('level', self.update_levels)
         app.connect('source-disconnected', self.source_disconnected_cb)
+        self.imon.connect('added', self.source_added_cb)
+        self.imon.start()
+
+    def source_added_cb(self, imon, src, props):
+        source = src(**props)
+        def _add_src():
+            self.add_source(source)
+            self.app.add_input_source(source)
+            self.app.start()
+            source.set_state(Gst.State.PLAYING)
+        # XXX: FIXME: we should wait till pulseaudio releases the card.
+        # (or disable it)
+        GLib.timeout_add(9*1000, _add_src)
 
     def add_source(self, source):
         builder = Gtk.Builder ()
