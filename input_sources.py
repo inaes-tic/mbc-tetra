@@ -27,6 +27,7 @@ GObject.threads_init()
 ## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=320,rate=30,framerate=30/1')
 ## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=1024,rate=30,framerate=30/1')
 VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=800,heigth=448,rate=30,framerate=30/1')
+VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=1024,heigth=576,rate=30,framerate=30/1')
 AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,format=S16LE,rate=32000,channels=2')
 
 XV_SYNC=False
@@ -59,6 +60,10 @@ class C920Input(Gst.Bin):
 
     def __contains__ (self, item):
         return item in self.children
+
+    def initialize(self):
+        self.set_uvc_controls()
+        self.xvsink.set_property('sync', XV_SYNC)
 
     def set_uvc_controls (self):
         controls = {
@@ -261,11 +266,14 @@ class InputMonitor(GObject.GObject):
 
     def __device_event(self, observer, device):
         if device.action == 'add':
+            logging.debug('DEVICE ADD: %s', device)
             for probe in ALL_PROBES:
                 ret = probe(device, self.context)
                 if ret:
+                    logging.debug('PROBING OK: %s', ret)
                     self.emit('added', ret[0], ret[1])
-                    return
+                    return True
+        return True
 
     def get_devices(self):
         devices = []

@@ -92,6 +92,9 @@ class TetraApp(GObject.GObject):
 
     def add_input_source(self, source):
         source.connect('removed', self.source_removed_cb)
+        self.audio_avg.append (deque (maxlen=WINDOW_LENGTH * 10))
+        self.audio_peak.append (deque (maxlen=WINDOW_LENGTH * 10))
+
         self.pipeline.add(source)
         self.inputs.append(source)
 
@@ -102,9 +105,7 @@ class TetraApp(GObject.GObject):
         self.volumes.append(source.volume)
         self.levels.append(source.level)
 
-        self.audio_avg.append (deque (maxlen=WINDOW_LENGTH * 10))
-        self.audio_peak.append (deque (maxlen=WINDOW_LENGTH * 10))
-
+        source.initialize()
         source.set_state(self.pipeline.get_state(0)[1])
 
     def mute_channel (self, chanidx, mute):
@@ -162,11 +163,6 @@ class TetraApp(GObject.GObject):
         i = e.pads.index(s)
         self.set_active_input(i)
 
-# XXX:
-    def set_uvc_controls (self):
-        for src in self.inputs:
-            src.set_uvc_controls()
-
     def __initialize(self):
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
@@ -182,7 +178,10 @@ class TetraApp(GObject.GObject):
     def start(self):
         if not self._initialized:
             self.__initialize()
-        self.set_uvc_controls()
+
+        for src in self.inputs:
+            src.initialize()
+
         ret = self.pipeline.set_state (Gst.State.PLAYING)
         logging.debug('STARTING ret= %s', ret)
         GLib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)

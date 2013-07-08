@@ -74,7 +74,7 @@ class MainWindow(object):
             self.add_source(source)
             self.app.add_input_source(source)
             self.app.start()
-            source.set_state(Gst.State.PLAYING)
+            #source.set_state(Gst.State.PLAYING)
         # XXX: FIXME: we should wait till pulseaudio releases the card.
         # (or disable it)
         GLib.timeout_add(9*1000, _add_src)
