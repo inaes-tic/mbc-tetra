@@ -23,14 +23,7 @@ if not Gst.is_initialized():
 
 GObject.threads_init()
 
-## FIXME: tamano real mas luego.
-## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=320,rate=30,framerate=30/1')
-## VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=1024,rate=30,framerate=30/1')
-VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=800,heigth=448,rate=30,framerate=30/1')
-VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=1024,heigth=576,rate=30,framerate=30/1')
-AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,format=S16LE,rate=32000,channels=2')
-
-XV_SYNC=False
+from common import *
 
 class GeneralInputError(Exception):
     pass

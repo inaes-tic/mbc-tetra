@@ -61,7 +61,7 @@ class MainWindow(object):
 
         self.builder.get_object('automatico').connect('clicked', self.auto_click_cb)
 
-        app.vsink.set_window_handle(live.get_property('window').get_xid())
+        app.live_sink.set_window_handle(live.get_property('window').get_xid())
 
         app.connect('level', self.update_levels)
         app.connect('source-disconnected', self.source_disconnected_cb)
@@ -74,6 +74,7 @@ class MainWindow(object):
             self.add_source(source)
             self.app.add_input_source(source)
             self.app.start()
+            Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.CAPS_DETAILS , 'source_added_cb')
             #source.set_state(Gst.State.PLAYING)
         # XXX: FIXME: we should wait till pulseaudio releases the card.
         # (or disable it)
@@ -168,7 +169,7 @@ if __name__ == "__main__":
 
     app.start()
 
-    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_start')
+    Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.CAPS_DETAILS , 'debug_start')
 
     Gtk.main()
     sys.exit(0)

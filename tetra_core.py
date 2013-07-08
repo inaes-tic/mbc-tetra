@@ -18,21 +18,8 @@ from gi.repository import GLib
 GObject.threads_init()
 Gst.init(sys.argv)
 
-from input_sources import C920Input
-
-INPUT_COUNT = 0
-# seconds
-WINDOW_LENGTH = 1.5
-UPDATE_INTERVAL = .25
-MIN_ON_AIR_TIME = 3
-# dB
-DEFAULT_NOISE_BASELINE = -45
-NOISE_THRESHOLD = 6
-SPEAK_UP_THRESHOLD = 3
-
-MANUAL=False
-
-XV_SYNC=False
+from common import *
+from output_sinks import AutoOutput
 
 
 
@@ -61,20 +48,20 @@ class TetraApp(GObject.GObject):
         self.pipeline.add (self.inputsel)
         #self.vsink = Gst.ElementFactory.make ('fakesink', None)
         q = Gst.ElementFactory.make ('queue2', None)
-        self.vsink = Gst.ElementFactory.make ('xvimagesink', None)
-        self.vsink.set_property('sync', XV_SYNC)
+        self.vsink = Gst.ElementFactory.make ('tee', 'tetra main video T')
         self.pipeline.add (q)
         self.pipeline.add (self.vsink)
         self.inputsel.link(q)
         q.link(self.vsink)
         self.preview_sinks = []
 
-        self.asink = Gst.ElementFactory.make ('autoaudiosink', None)
+        self.asink = Gst.ElementFactory.make ('tee', 'tetra main audio T')
 
         self.audio_avg = []
         self.audio_peak = []
 
         self.inputs = []
+        self.outputs = []
         self.video_inputs = []
         self.volumes = []
         self.levels = []
@@ -87,8 +74,19 @@ class TetraApp(GObject.GObject):
         self.amixer.link(q)
         q.link(self.asink)
 
-### XXX: mejor nomenclatura
-        self.preview_sinks.append (self.vsink)
+        sink = AutoOutput()
+        self.live_sink = sink.preview_sink
+        self.add_output_sink(sink)
+
+
+    def add_output_sink(self, sink):
+        self.pipeline.add(sink)
+        self.outputs.append(sink)
+        self.vsink.link(sink)
+        self.asink.link(sink)
+
+        sink.initialize()
+        sink.set_state(self.pipeline.get_state(0)[1])
 
     def add_input_source(self, source):
         source.connect('removed', self.source_removed_cb)
@@ -179,8 +177,18 @@ class TetraApp(GObject.GObject):
         if not self._initialized:
             self.__initialize()
 
-        for src in self.inputs:
-            src.initialize()
+        # if started with no cameras connected we need to set the state
+        # of every input manually. (we call start() again when new devices are
+        # added to sync everything)
+        state = self.pipeline.get_state(0)
+        if state[1] == Gst.State.READY:
+            for src in self.inputs:
+                src.initialize()
+                src.set_state (Gst.State.PLAYING)
+
+        #for sink in self.outputs:
+        #    sink.initialize()
+        #    sink.set_state (Gst.State.PLAYING)
 
         ret = self.pipeline.set_state (Gst.State.PLAYING)
         logging.debug('STARTING ret= %s', ret)
