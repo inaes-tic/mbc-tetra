@@ -19,13 +19,13 @@ GObject.threads_init()
 Gst.init(sys.argv)
 
 from common import *
-from output_sinks import AutoOutput
+from output_sinks import AutoOutput, MP4Output
 
 
 
 class TetraApp(GObject.GObject):
     __gsignals__ = {
-       "level": (GObject.SIGNAL_RUN_FIRST, None, (int,float)),
+       "level": (GObject.SIGNAL_RUN_FIRST, None, (int,GObject.TYPE_PYOBJECT)),
        "prepare-xwindow-id": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
        "prepare-window-handle": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
        "source-disconnected": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
@@ -77,6 +77,10 @@ class TetraApp(GObject.GObject):
         sink = AutoOutput()
         self.live_sink = sink.preview_sink
         self.add_output_sink(sink)
+
+#        sink = MP4Output()
+#        self.add_output_sink(sink)
+
 
 
     def add_output_sink(self, sink):
@@ -186,9 +190,9 @@ class TetraApp(GObject.GObject):
                 src.initialize()
                 src.set_state (Gst.State.PLAYING)
 
-        #for sink in self.outputs:
-        #    sink.initialize()
-        #    sink.set_state (Gst.State.PLAYING)
+        for sink in self.outputs:
+            sink.initialize()
+            sink.set_state (Gst.State.PLAYING)
 
         ret = self.pipeline.set_state (Gst.State.PLAYING)
         logging.debug('STARTING ret= %s', ret)
@@ -335,7 +339,7 @@ class TetraApp(GObject.GObject):
                     self.audio_avg[idx].append (rms)
                     self.audio_peak[idx].append (peak)
                     #logging.debug('LEVEL idx %d, avg %f peak %f', idx, rms, peak)
-                    self.emit('level', idx, peak)
+                    self.emit('level', idx, apeak)
             except IndexError:
                 return True
             except ValueError:

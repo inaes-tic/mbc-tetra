@@ -1,4 +1,5 @@
 {
+    "use_dark_theme": true,
     "main_ui": "main_ui_2.ui",
-    "preview_ui": "preview_box.ui"
+    "preview_ui": "preview_box_horiz.ui"
 }

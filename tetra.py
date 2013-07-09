@@ -88,7 +88,14 @@ class MainWindow(object):
         slider = builder.get_object ('volume')
         slider.connect ("value-changed", self.slider_cb, source)
 
-        bar = builder.get_object ('peak')
+        bar = []
+        bar_l = builder.get_object ('peak_L')
+        if bar_l:
+            bar.append(bar_l)
+        bar_r = builder.get_object ('peak_R')
+        if bar_r:
+            bar.append(bar_r)
+
         self.bars.append (bar)
 
         mute = builder.get_object ('mute')
@@ -132,14 +139,16 @@ class MainWindow(object):
             pass
         return True
 
-    def update_levels (self, app, idx, peak):
+    def update_levels (self, app, idx, peaks):
         Gdk.threads_enter ()
-        frac = 1.0 - peak/DEFAULT_NOISE_BASELINE
-        if frac < 0:
-            frac = 0
-        elif frac > 1:
-            frac = 1
-        self.bars[idx].set_fraction (frac)
+        bars = self.bars[idx]
+        for bar,peak in zip(bars, peaks):
+            frac = 1.0 - peak/DEFAULT_NOISE_BASELINE
+            if frac < 0:
+                frac = 0
+            elif frac > 1:
+                frac = 1
+            bar.set_fraction (frac)
         Gdk.threads_leave ()
         return True
 
@@ -163,9 +172,14 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.DEBUG)
 
+    dark = config.get('use_dark_theme', False)
+    if dark:
+        Gtk.Settings.get_default().set_property('gtk-application-prefer-dark-theme', True)
+
     theme = config.get('theme', None)
     if theme:
         load_theme('theme-tetra-ambiance/gtk.css')
+
     app = TetraApp()
 
     w2 = MainWindow(app)
