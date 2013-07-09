@@ -23,6 +23,7 @@ Gst.init(sys.argv)
 Gtk.init(sys.argv)
 Gdk.init(sys.argv)
 
+import config
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
 import input_sources
@@ -33,7 +34,7 @@ class MainWindow(object):
         self.imon = input_sources.InputMonitor()
 
         self.builder = Gtk.Builder ()
-        self.builder.add_from_file ('main_ui_2.ui')
+        self.builder.add_from_file (config.get('main_ui', 'main_ui_2.ui'))
 
         self.window = self.builder.get_object('tetra_main')
         self.window.connect ("destroy", lambda app: Gtk.main_quit())
@@ -82,7 +83,7 @@ class MainWindow(object):
 
     def add_source(self, source):
         builder = Gtk.Builder ()
-        builder.add_objects_from_file ('preview_box.ui', ['PreviewBoxItem'])
+        builder.add_objects_from_file (config.get('preview_ui','preview_box.ui'), ['PreviewBoxItem'])
 
         slider = builder.get_object ('volume')
         slider.connect ("value-changed", self.slider_cb, source)
@@ -162,7 +163,9 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.DEBUG)
 
-    load_theme('theme-tetra-ambiance/gtk.css')
+    theme = config.get('theme', None)
+    if theme:
+        load_theme('theme-tetra-ambiance/gtk.css')
     app = TetraApp()
 
     w2 = MainWindow(app)
