@@ -19,7 +19,7 @@ GObject.threads_init()
 Gst.init(sys.argv)
 
 from common import *
-from output_sinks import AutoOutput, MP4Output
+from output_sinks import AutoOutput, MP4Output, FLVOutput
 
 
 
@@ -78,8 +78,8 @@ class TetraApp(GObject.GObject):
         self.live_sink = sink.preview_sink
         self.add_output_sink(sink)
 
-#        sink = MP4Output()
-#        self.add_output_sink(sink)
+        sink = FLVOutput()
+        self.add_output_sink(sink)
 
 
 
@@ -305,6 +305,11 @@ class TetraApp(GObject.GObject):
                 sink.set_property('sync', XV_SYNC)
             except:
                 continue
+
+        for sink in self.outputs:
+            sink.initialize()
+            sink.set_state(Gst.State.PLAYING)
+
         self.emit('source-disconnected', source, idx)
         self.pipeline.set_state (Gst.State.PLAYING)
         logging.debug('SOURCE REMOVED CB ENDED')

@@ -1,5 +1,12 @@
 {
     "use_dark_theme": true,
     "main_ui": "main_ui_2.ui",
-    "preview_ui": "preview_box_horiz.ui"
+    "preview_ui": "preview_box_horiz.ui",
+    "FLVOutput": {
+        "host": "127.0.0.1",
+        "port": 9078,
+        "x264_speed_preset": "ultrafast",
+        "x264_bitrate": 1024
+
+    }
 }

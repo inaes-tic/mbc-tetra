@@ -22,6 +22,7 @@ if not Gst.is_initialized():
     Gst.init(sys.argv)
 
 from common import *
+import config
 
 class AutoOutput(Gst.Bin):
     def __init__(self, name=None):
@@ -107,6 +108,73 @@ class MP4Output(Gst.Bin):
         venc.set_property('bframes', 0)
 
         venc.set_property ('bitrate',1024)
+
+        for el in [aq, vq, aenc, venc, parser, vmux, vmuxoq, vmuxviq, vsink]:
+            self.add(el)
+
+        aq.link(aenc)
+        aenc.link(vmux)
+
+        caps = Gst.Caps.from_string ('video/x-raw,width=%d,heigth=%d,framerate=30/1' % (VIDEO_WIDTH, VIDEO_HEIGTH))
+        vq.link_filtered(venc, caps)
+
+        venc.link(parser)
+        parser.link(vmuxviq)
+        vmuxviq.link(vmux)
+        vmux.link(vmuxoq)
+        vmuxoq.link(vsink)
+
+
+        agpad = Gst.GhostPad.new('audiosink', aq.get_static_pad('sink'))
+        vgpad = Gst.GhostPad.new('videosink', vq.get_static_pad('sink'))
+
+        self.add_pad(vgpad)
+        self.add_pad(agpad)
+
+    def __contains__ (self, item):
+        return item in self.children
+
+    def initialize(self):
+        pass
+
+class FLVOutput(Gst.Bin):
+    def __init__(self, name=None):
+        Gst.Bin.__init__(self)
+        if name:
+            self.set_property('name', name)
+
+        conf = config.get('FLVOutput', {})
+
+        aq = Gst.ElementFactory.make('queue2', 'audio q')
+        vq = Gst.ElementFactory.make('queue2', 'video q')
+        vmuxoq = Gst.ElementFactory.make('queue2', 'video mux out q')
+        vmuxviq = Gst.ElementFactory.make('queue2', 'video mux video in q')
+        self.preview_sink = None
+
+        aenc = Gst.ElementFactory.make('avenc_aac', None)
+
+        vsink = Gst.ElementFactory.make ('tcpserversink', None)
+        # remember to change them in the streaming server if you
+        # stray away from the defaults
+        vsink.set_property('host', conf.get('host', '127.0.0.1'))
+        vsink.set_property('port', conf.get('port', 9078))
+
+        vmux = Gst.ElementFactory.make ('flvmux', None)
+        vmux.set_property('streamable', True)
+
+        parser = Gst.ElementFactory.make ('h264parse', None)
+        parser.set_property ('config-interval',2)
+
+        venc = Gst.ElementFactory.make ('x264enc', None)
+        venc.set_property('byte-stream', True)
+        venc.set_property('tune', 'zerolatency')
+        # it gives unicode but x264enc wants str
+        venc.set_property('speed-preset', str(conf.get('x264_speed_preset', 'ultrafast')))
+
+        # It lowers the compression ratio but gives a stable image faster.
+        venc.set_property ('key-int-max',30)
+
+        venc.set_property ('bitrate', conf.get('x264_bitrate', 1024))
 
         for el in [aq, vq, aenc, venc, parser, vmux, vmuxoq, vmuxviq, vsink]:
             self.add(el)
