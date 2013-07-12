@@ -249,6 +249,108 @@ def C920Probe(device, context):
 
     return False
 
+
+class TestInput(BaseInput):
+    def __init__(self, name=None):
+        BaseInput.__init__(self)
+        if name:
+            self.set_property('name', name)
+
+        self.asink = None
+        self.vsink = None
+
+        props = {
+            'is_live': True,
+            'do-timestamp': True,
+        }
+
+        aprops = {
+            'freq': 0,
+            'volume': 0,
+        }
+        aprops.update(props)
+
+        self.__add_video_source(props)
+        self.__add_audio_source(aprops)
+
+        if not (self.asink and self.vsink):
+            raise GeneralInputError('Cannot create audio or video source')
+
+        agpad = Gst.GhostPad.new('audiosrc', self.asink.get_static_pad('src'))
+        vgpad = Gst.GhostPad.new('videosrc', self.vsink.get_static_pad('src'))
+
+        self.add_pad(agpad)
+        self.add_pad(vgpad)
+
+    def __add_video_source(self, props):
+        src = Gst.ElementFactory.make ('videotestsrc', None)
+        q0 = Gst.ElementFactory.make ('queue2', None)
+        tee = Gst.ElementFactory.make ('tee', None)
+        conv = Gst.ElementFactory.make ('videoconvert', None)
+        q1 = Gst.ElementFactory.make ('queue2', None)
+        q2 = Gst.ElementFactory.make ('queue2', None)
+        sink = Gst.ElementFactory.make ('xvimagesink', None)
+        sink.set_property('sync', XV_SYNC)
+
+        self.xvsink = sink
+        self.vsink = q1
+        self.vsrc = src
+
+        for el in (src, sink, q0, q1, q2, tee, conv):
+            self.add(el)
+
+        if props:
+            for prop,val in props.items():
+                src.set_property(prop, val)
+
+# XXX:
+        #q0.set_property ('max-size-time', int(1*Gst.SECOND))
+        src.link_filtered(q0, VIDEO_CAPS_SIZE)
+        q0.link_filtered(conv, VIDEO_CAPS_SIZE)
+        conv.link(tee)
+        tee.link(q1)
+        tee.link(q2)
+        q2.link(sink)
+
+    def __add_audio_source(self, props):
+        src = Gst.ElementFactory.make ('audiotestsrc', None)
+        q0 = Gst.ElementFactory.make ('queue2', None)
+        q1 = Gst.ElementFactory.make ('queue2', None)
+        q2 = Gst.ElementFactory.make ('queue2', None)
+        self.asink = q2
+        tee = Gst.ElementFactory.make ('tee', None)
+        volume = Gst.ElementFactory.make ('volume', None)
+        self.volume = volume
+#
+        fasink = Gst.ElementFactory.make ('fakesink', None)
+        fasink.set_property ('sync', False)
+#
+
+        # 10 samples per second
+        level = Gst.ElementFactory.make ('level', None)
+        level.set_property ("message", True)
+        self.level = level
+
+        for el in (src, q0, q1, q2, tee, volume, fasink, level):
+            self.add(el)
+
+        if props:
+            for prop,val in props.items():
+                src.set_property (prop, val)
+
+        caps = AUDIO_CAPS
+        src.link_filtered (q0, caps)
+        q0.link (volume)
+        volume.link (tee)
+        tee.link (q1)
+        tee.link (q2)
+        q1.link (level)
+        level.link(fasink)
+
+
+GObject.type_register(TestInput)
+
+
 ALL_PROBES = [C920Probe]
 
 
@@ -302,6 +404,7 @@ if __name__=='__main__':
     imon.start()
     devices = imon.get_devices()
 
+    devices.append( (TestInput, {}) )
     p = Gst.Pipeline.new('P')
     for (src, props) in devices:
         print src, props
