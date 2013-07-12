@@ -284,10 +284,10 @@ class TestInput(BaseInput):
 
     def __add_video_source(self, props):
         src = Gst.ElementFactory.make ('videotestsrc', None)
-        q0 = Gst.ElementFactory.make ('queue2', None)
+        q0 = Gst.ElementFactory.make ('identity', None)
         tee = Gst.ElementFactory.make ('tee', None)
         conv = Gst.ElementFactory.make ('videoconvert', None)
-        q1 = Gst.ElementFactory.make ('queue2', None)
+        q1 = Gst.ElementFactory.make ('identity', None)
         q2 = Gst.ElementFactory.make ('queue2', None)
         sink = Gst.ElementFactory.make ('xvimagesink', None)
         sink.set_property('sync', XV_SYNC)
@@ -306,11 +306,11 @@ class TestInput(BaseInput):
 # XXX:
         #q0.set_property ('max-size-time', int(1*Gst.SECOND))
         src.link_filtered(q0, VIDEO_CAPS_SIZE)
-        q0.link_filtered(conv, VIDEO_CAPS_SIZE)
-        conv.link(tee)
-        tee.link(q1)
+        q0.link_filtered(tee, VIDEO_CAPS_SIZE)
+        tee.link(conv)
+        conv.link_filtered(q1, VIDEO_CAPS_SIZE)
         tee.link(q2)
-        q2.link(sink)
+        q2.link_filtered(sink, VIDEO_CAPS_SIZE)
 
     def __add_audio_source(self, props):
         src = Gst.ElementFactory.make ('audiotestsrc', None)
