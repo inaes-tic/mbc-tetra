@@ -42,8 +42,7 @@ class AutoOutput(Gst.Bin):
 
         self.aq.link(self.asink)
 
-        caps = Gst.Caps.from_string ('video/x-raw,width=%d,heigth=%d,framerate=30/1' % (VIDEO_WIDTH, VIDEO_HEIGTH))
-        self.vq.link_filtered(self.vsink, caps)
+        self.vq.link_filtered(self.vsink, VIDEO_CAPS_SIZE)
 
         agpad = Gst.GhostPad.new('audiosink', self.aq.get_static_pad('sink'))
         vgpad = Gst.GhostPad.new('videosink', self.vq.get_static_pad('sink'))
@@ -182,8 +181,7 @@ class FLVOutput(Gst.Bin):
         aq.link(aenc)
         aenc.link(vmux)
 
-        caps = Gst.Caps.from_string ('video/x-raw,width=%d,heigth=%d,framerate=30/1' % (VIDEO_WIDTH, VIDEO_HEIGTH))
-        vq.link_filtered(venc, caps)
+        vq.link_filtered(venc, VIDEO_CAPS_SIZE)
 
         venc.link(parser)
         parser.link(vmuxviq)

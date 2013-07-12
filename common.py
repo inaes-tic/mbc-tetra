@@ -17,8 +17,9 @@ if not Gst.is_initialized():
 
 ## 16:9 , alcanza para tres camaras en un usb 2.0.
 VIDEO_WIDTH = 1024
-VIDEO_HEIGTH = 576
-VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=%d,heigth=%d,rate=30,framerate=30/1' % (VIDEO_WIDTH, VIDEO_HEIGTH))
+VIDEO_HEIGHT = 576
+VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=%d,height=%d,rate=30,framerate=30/1' % (VIDEO_WIDTH, VIDEO_HEIGHT))
+VIDEO_CAPS_SIZE = Gst.Caps.from_string ('video/x-raw,width=%d,height=%d,framerate=30/1' % (VIDEO_WIDTH, VIDEO_HEIGHT))
 AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,format=S16LE,rate=32000,channels=2')
 
 
