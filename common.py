@@ -20,7 +20,8 @@ VIDEO_WIDTH = 1024
 VIDEO_HEIGHT = 576
 VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=%d,height=%d,rate=30,framerate=30/1' % (VIDEO_WIDTH, VIDEO_HEIGHT))
 VIDEO_CAPS_SIZE = Gst.Caps.from_string ('video/x-raw,width=%d,height=%d,framerate=30/1' % (VIDEO_WIDTH, VIDEO_HEIGHT))
-AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,format=S16LE,rate=32000,channels=2')
+
+AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,rate=44100,channels=2')
 
 
 INPUT_COUNT = 0

@@ -183,6 +183,7 @@ class C920Input(BaseInput):
 
 
     def __add_audio_source (self, props):
+        C920_AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,format=S16LE,rate=32000,channels=2')
         name = props.get('name', 'alsasrc')
         src = Gst.ElementFactory.make (name, None)
         q0 = Gst.ElementFactory.make ('queue2', None)
@@ -197,6 +198,8 @@ class C920Input(BaseInput):
         fasink.set_property ('sync', False)
 #
         aconv = Gst.ElementFactory.make ('audioconvert', None)
+        aconv2 = Gst.ElementFactory.make ('audioconvert', None)
+        ares = Gst.ElementFactory.make ('audioresample', None)
 
         flt = Gst.ElementFactory.make ('audiochebband', None)
         flt.set_property ('lower-frequency', 400)
@@ -206,19 +209,20 @@ class C920Input(BaseInput):
         level.set_property ("message", True)
         self.level = level
 
-        for el in (src, q0, q1, q2, tee, volume, fasink, aconv, flt, level):
+        for el in (src, q0, q1, q2, tee, volume, fasink, aconv, aconv2, ares, flt, level):
             self.add(el)
 
         if props:
             for prop,val in props.items():
                 src.set_property (prop, val)
 
-        caps = AUDIO_CAPS
-        src.link_filtered (q0, caps)
+        src.link_filtered (q0, C920_AUDIO_CAPS)
         q0.link (volume)
         volume.link (tee)
         tee.link (q1)
-        tee.link (q2)
+        tee.link (aconv2)
+        aconv2.link(ares)
+        ares.link(q2)
         q1.link (aconv)
         aconv.link (flt)
         flt.link (level)
