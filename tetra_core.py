@@ -26,6 +26,8 @@ from output_sinks import AutoOutput, MP4Output, FLVOutput
 class TetraApp(GObject.GObject):
     __gsignals__ = {
        "level": (GObject.SIGNAL_RUN_FIRST, None, (int,GObject.TYPE_PYOBJECT)),
+       "insert-level": (GObject.SIGNAL_RUN_FIRST, None, (int,GObject.TYPE_PYOBJECT)),
+       "master-level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
        "prepare-xwindow-id": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
        "prepare-window-handle": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
        "source-disconnected": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
@@ -74,7 +76,10 @@ class TetraApp(GObject.GObject):
         self.cam_vol = Gst.ElementFactory.make ('volume', None)
         self.pipeline.add(self.cam_vol)
         self.master_vol = Gst.ElementFactory.make ('volume', None)
+        self.master_level = Gst.ElementFactory.make ('level', None)
+        self.master_level.set_property ("message", True)
         self.pipeline.add(self.master_vol)
+        self.pipeline.add(self.master_level)
 
         qam = Gst.ElementFactory.make ('queue2', None)
         self.pipeline.add(qam)
@@ -89,7 +94,8 @@ class TetraApp(GObject.GObject):
         q = Gst.ElementFactory.make('queue2', None)
         self.pipeline.add(q)
         self.insert_mixer.link(self.master_vol)
-        self.master_vol.link(q)
+        self.master_vol.link(self.master_level)
+        self.master_level.link(q)
         q.link(self.asink)
 
         sink = AutoOutput()
@@ -366,23 +372,25 @@ class TetraApp(GObject.GObject):
 
         s = msg.get_structure()
         if s.get_name() == "level":
-            try:
-                idx = self.inputs.index(msg.src.get_parent())
-                arms = s.get_value('rms')
-                apeak = s.get_value('peak')
-                larms = len(arms)
-                lapeak = len(arms)
-                if larms and lapeak:
-                    rms = sum (arms) / len (arms)
-                    peak = sum (apeak) / len (apeak)
+            parent = msg.src.get_parent()
+            arms = s.get_value('rms')
+            apeak = s.get_value('peak')
+            larms = len(arms)
+            lapeak = len(arms)
+            if larms and lapeak:
+                rms = sum (arms) / len (arms)
+                peak = sum (apeak) / len (apeak)
+                if parent in self.inputs:
+                    idx = self.inputs.index(parent)
                     self.audio_avg[idx].append (rms)
                     self.audio_peak[idx].append (peak)
                     #logging.debug('LEVEL idx %d, avg %f peak %f', idx, rms, peak)
                     self.emit('level', idx, apeak)
-            except IndexError:
-                return True
-            except ValueError:
-                return True
+                elif parent in self.audio_inserts:
+                    idx = self.audio_inserts.index(parent)
+                    self.emit('insert-level', idx, apeak)
+                elif msg.src is self.master_level:
+                    self.emit('master-level', apeak)
         return True
 
     def bus_message_cb (self, bus, msg, arg=None):
