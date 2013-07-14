@@ -62,16 +62,34 @@ class TetraApp(GObject.GObject):
 
         self.inputs = []
         self.outputs = []
+        self.audio_inserts = []
         self.video_inputs = []
         self.volumes = []
         self.levels = []
         self.amixer = Gst.ElementFactory.make ('adder', None)
+        self.amixer.set_property('caps', AUDIO_CAPS)
+        self.insert_mixer = Gst.ElementFactory.make ('adder', None)
+        self.insert_mixer.set_property('caps', AUDIO_CAPS)
 
-        q = Gst.ElementFactory.make ('queue2', None)
-        self.pipeline.add(q)
+        self.cam_vol = Gst.ElementFactory.make ('volume', None)
+        self.pipeline.add(self.cam_vol)
+        self.master_vol = Gst.ElementFactory.make ('volume', None)
+        self.pipeline.add(self.master_vol)
+
+        qam = Gst.ElementFactory.make ('queue2', None)
+        self.pipeline.add(qam)
         self.pipeline.add(self.amixer)
+        self.pipeline.add(self.insert_mixer)
         self.pipeline.add(self.asink)
-        self.amixer.link(q)
+
+        self.amixer.link(qam)
+        qam.link(self.cam_vol)
+        self.cam_vol.link(self.insert_mixer)
+
+        q = Gst.ElementFactory.make('queue2', None)
+        self.pipeline.add(q)
+        self.insert_mixer.link(self.master_vol)
+        self.master_vol.link(q)
         q.link(self.asink)
 
         sink = AutoOutput()
@@ -87,7 +105,7 @@ class TetraApp(GObject.GObject):
         self.pipeline.add(sink)
         self.outputs.append(sink)
         self.vsink.link(sink)
-        self.asink.link(sink)
+        self.asink.link_filtered(sink, AUDIO_CAPS)
 
         sink.initialize()
         sink.set_state(self.pipeline.get_state(0)[1])
@@ -106,6 +124,19 @@ class TetraApp(GObject.GObject):
         self.preview_sinks.append(source.xvsink)
         self.volumes.append(source.volume)
         self.levels.append(source.level)
+
+        source.initialize()
+        source.set_state(self.pipeline.get_state(0)[1])
+
+    def add_audio_insert(self, source):
+        self.pipeline.add(source)
+        self.audio_inserts.append(source)
+
+        #source.link_filtered(self.insert_mixer, AUDIO_CAPS)
+        source.link_filtered(self.amixer, AUDIO_CAPS)
+
+        #self.volumes.append(source.volume)
+        #self.levels.append(source.level)
 
         source.initialize()
         source.set_state(self.pipeline.get_state(0)[1])
@@ -187,6 +218,9 @@ class TetraApp(GObject.GObject):
         state = self.pipeline.get_state(0)
         if state[1] == Gst.State.READY:
             for src in self.inputs:
+                src.initialize()
+                src.set_state (Gst.State.PLAYING)
+            for src in self.audio_inserts:
                 src.initialize()
                 src.set_state (Gst.State.PLAYING)
 
