@@ -351,6 +351,80 @@ class TestInput(BaseInput):
 GObject.type_register(TestInput)
 
 
+class AlsaInput(BaseInput):
+    def __init__(self, audio_props=None, name=None):
+        BaseInput.__init__(self)
+        if name:
+            self.set_property('name', name)
+
+        self.asink = None
+
+        self.__add_audio_source(audio_props)
+
+        if not self.asink:
+            raise GeneralInputError('Cannot create audio or video source')
+
+        agpad = Gst.GhostPad.new('audiosrc', self.asink.get_static_pad('src'))
+
+        self.add_pad(agpad)
+
+    def set_device(self, device):
+        self.asrc.set_property('device', device)
+        self.asrc.set_state(Gst.State.NULL)
+        self.asrc.set_state(Gst.State.PLAYING)
+
+    def __add_audio_source (self, props):
+        if props is None:
+            props = { 'device':'default' }
+        name = props.get('name', 'alsasrc')
+        src = Gst.ElementFactory.make (name, None)
+        self.asrc = src
+        q0 = Gst.ElementFactory.make ('queue2', None)
+        q1 = Gst.ElementFactory.make ('queue2', None)
+        q2 = Gst.ElementFactory.make ('queue2', None)
+        self.asink = q2
+        tee = Gst.ElementFactory.make ('tee', None)
+        volume = Gst.ElementFactory.make ('volume', None)
+        self.volume = volume
+#
+        fasink = Gst.ElementFactory.make ('fakesink', None)
+        fasink.set_property ('sync', False)
+#
+        aconv = Gst.ElementFactory.make ('audioconvert', None)
+        aconv2 = Gst.ElementFactory.make ('audioconvert', None)
+        ares = Gst.ElementFactory.make ('audioresample', None)
+
+        flt = Gst.ElementFactory.make ('audiochebband', None)
+        flt.set_property ('lower-frequency', 400)
+        flt.set_property ('upper-frequency', 3500)
+        # 10 samples per second
+        level = Gst.ElementFactory.make ('level', None)
+        level.set_property ("message", True)
+        self.level = level
+
+        for el in (src, q0, q1, q2, tee, volume, fasink, aconv, aconv2, ares, flt, level):
+            self.add(el)
+
+        if props:
+            for prop,val in props.items():
+                src.set_property (prop, val)
+
+        src.link (q0)
+        q0.link (volume)
+        volume.link (tee)
+        tee.link (q1)
+        tee.link (aconv2)
+        aconv2.link (ares)
+        ares.link (q2)
+        q1.link (aconv)
+        aconv.link (flt)
+        flt.link (level)
+        level.link(fasink)
+
+
+GObject.type_register(AlsaInput)
+
+
 ALL_PROBES = [C920Probe]
 
 
