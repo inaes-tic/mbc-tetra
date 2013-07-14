@@ -393,18 +393,83 @@ class InputMonitor(GObject.GObject):
                     devices.append(ret)
                     break
 
+        #devices.append( (TestInput, {}) )
         return devices
+
+class SoundCardMonitor(GObject.GObject):
+    __gsignals__ = {
+       "add": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+       "change": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+       "remove": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+    }
+    def __init__(self):
+        from pyudev.glib import MonitorObserver
+        GObject.GObject.__init__(self)
+        self.context = pyudev.Context()
+        self.monitor = pyudev.Monitor.from_netlink(self.context)
+        self.monitor.filter_by(subsystem='sound')
+        self.observer = MonitorObserver(self.monitor)
+        self.observer.connect('device-event', self.__device_event)
+
+    def start(self):
+        self.monitor.start()
+
+    def __device_event(self, observer, device):
+        action = device.action
+        if action in ['add', 'change']:
+            logging.debug('SOUND DEVICE %s: %s', action, device)
+            if 'id' in device.attributes:
+                c = {
+                    'id': device.attributes['id'],
+                    'model': device.get('ID_MODEL', ''),
+                    'model_db': device.get('ID_MODEL_FROM_DATABASE', ''),
+                    'path': device.get('DEVPATH', '')
+                }
+                self.emit(action, c)
+
+        elif action == 'remove':
+            logging.debug('SOUND DEVICE %s: %s', action, device)
+            c = {
+                'path': device.get('DEVPATH', '')
+            }
+            self.emit(action, c)
+        return True
+
+    def get_devices(self):
+        context = pyudev.Context()
+        cards = context.list_devices().match_subsystem('sound')
+        devs = []
+        for device in cards:
+            if 'id' in device.attributes:
+                c = {
+                    'id': device.attributes['id'],
+                    'model': device.get('ID_MODEL', ''),
+                    'model_db': device.get('ID_MODEL_FROM_DATABASE', ''),
+                    'path': device.get('DEVPATH', '')
+                }
+                devs.append(c)
+        return devs
 
 if __name__=='__main__':
     def add_cb(imon, arg, arg1):
         print 'ADD CB ', imon, arg, arg1
+
+    def smon_cb(imon, c):
+        print 'SOUND MON CB ', imon, c
+
+    simon = SoundCardMonitor()
+    print 'Sound cards: ', simon.get_devices()
+    simon.connect('add', smon_cb)
+    simon.connect('change', smon_cb)
+    simon.connect('remove', smon_cb)
+    simon.start()
 
     imon = InputMonitor()
     imon.connect('added', add_cb)
     imon.start()
     devices = imon.get_devices()
 
-    devices.append( (TestInput, {}) )
+    #devices.append( (TestInput, {}) )
     p = Gst.Pipeline.new('P')
     for (src, props) in devices:
         print src, props
