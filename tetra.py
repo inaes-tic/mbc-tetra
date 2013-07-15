@@ -26,6 +26,7 @@ Gdk.init(sys.argv)
 import config
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
+from widgets import SoundMixWidget
 import input_sources
 
 class MainWindow(object):
@@ -42,6 +43,13 @@ class MainWindow(object):
 
         self.preview_box = self.builder.get_object('PreviewBox')
         self.controls = self.builder.get_object('controls')
+        self.options_box = self.builder.get_object('OptionsBox')
+
+        self.sound_mix = SoundMixWidget()
+        self.options_box.add(self.sound_mix)
+        self.sound_mix.connect('set-mix-device', self.insert_sel_cb)
+        self.sound_mix.connect('set-mix-source', self.insert_sel_cb)
+        self.insert_sel_cb(self.sound_mix, None)
 
         self.sliders = []
         self.bars = []
@@ -109,6 +117,18 @@ class MainWindow(object):
         self.preview_box.add(builder.get_object('PreviewBoxItem'))
 
         source.xvsink.set_window_handle(da.get_property('window').get_xid())
+
+    def insert_sel_cb (self, widget, arg):
+        source = widget.mix_source
+        devinfo = widget.mix_device
+        device = devinfo['device']
+        if source == 'external':
+            if not self.app.audio_inserts:
+                src = input_sources.AlsaInput({'device': device})
+                self.app.add_audio_insert(src)
+            else:
+                self.app.audio_inserts[0].set_device(device)
+        self.app.set_audio_source(source)
 
     def auto_click_cb (self, widget):
         self.app.set_automatic(widget.get_active())
