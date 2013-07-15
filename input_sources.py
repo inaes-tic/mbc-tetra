@@ -388,13 +388,20 @@ class AlsaInput(BaseInput):
         self.add_pad(agpad)
 
     def set_device(self, device):
+        if device == self.device:
+            return
+
         self.asrc.set_property('device', device)
+        state = self.get_state(0)[1]
         self.asrc.set_state(Gst.State.NULL)
-        self.asrc.set_state(Gst.State.PLAYING)
+        self.asrc.set_state(state)
+        #self.asrc.set_state(Gst.State.PLAYING)
+        self.device = device
 
     def __add_audio_source (self, props):
         if props is None:
             props = { 'device':'default' }
+        self.device = props['device']
         name = props.get('name', 'alsasrc')
         src = Gst.ElementFactory.make (name, None)
         self.asrc = src
