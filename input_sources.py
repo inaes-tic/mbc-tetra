@@ -34,6 +34,21 @@ class BaseInput(Gst.Bin):
     }
     def __init__(self):
         Gst.Bin.__init__(self)
+        self.volume = None
+
+    def set_volume(self, volume):
+        if self.volume is None:
+            return
+        if volume > 1.5:
+            volume = 1.5
+        elif volume < 0:
+            volume = 0
+        self.volume.set_property('volume', volume)
+
+    def set_mute(self, mute):
+        if self.volume is None:
+            return
+        self.volume.set_property('mute', mute)
 
     def initialize(self):
         pass
