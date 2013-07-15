@@ -138,14 +138,14 @@ class TetraApp(GObject.GObject):
         self.pipeline.add(source)
         self.audio_inserts.append(source)
 
-        #source.link_filtered(self.insert_mixer, AUDIO_CAPS)
-        source.link_filtered(self.amixer, AUDIO_CAPS)
+        source.link_filtered(self.insert_mixer, AUDIO_CAPS)
 
         #self.volumes.append(source.volume)
         #self.levels.append(source.level)
 
         source.initialize()
         source.set_state(self.pipeline.get_state(0)[1])
+        Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_add_insert')
 
     def mute_channel (self, chanidx, mute):
         try:
@@ -163,6 +163,18 @@ class TetraApp(GObject.GObject):
             self.volumes[chanidx].set_property('volume', volume)
         except IndexError:
             pass
+
+    def set_audio_source(self, source):
+        if source not in ['internal', 'external']:
+            return
+        if source == 'internal':
+            for src in self.audio_inserts:
+                src.set_mute(True)
+            self.cam_vol.set_property('mute', False)
+        else:
+            self.cam_vol.set_property('mute', True)
+            for src in self.audio_inserts:
+                src.set_mute(False)
 
     def set_automatic(self, auto=True):
         self._automatic = auto
