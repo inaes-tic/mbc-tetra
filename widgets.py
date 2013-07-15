@@ -41,8 +41,10 @@ class SoundMixWidget(Gtk.Box):
             self.ext_mix_r.set_active(True)
             self.combo.set_sensitive(True)
         self.ext_mix_r.connect('toggled', self.mix_tog)
+        self.mix_source = mixtype
 
         active_card = self.config.setdefault('extern_card', 'default')
+        self.mix_device = {'device': active_card, 'path':'', 'human_name':'default'}
 
         self.lstore = self.builder.get_object('cards_store')
         self.lstore.append(['default','default','default'])
