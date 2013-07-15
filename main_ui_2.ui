@@ -30,6 +30,7 @@
           <object class="GtkBox" id="controls">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="vexpand">True</property>
             <property name="orientation">vertical</property>
             <child>
               <object class="GtkHBox" id="PreviewBox">
@@ -58,13 +59,25 @@
                 <property name="can_focus">True</property>
                 <property name="label_fill">True</property>
                 <child>
-                  <placeholder/>
+                  <object class="GtkBox" id="OptionsBox">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <child>
+                      <placeholder/>
+                    </child>
+                    <child>
+                      <placeholder/>
+                    </child>
+                    <child>
+                      <placeholder/>
+                    </child>
+                  </object>
                 </child>
                 <child type="label">
                   <object class="GtkLabel" id="label1">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Ajustes de video</property>
+                    <property name="label" translatable="yes">Ajustes</property>
                     <property name="use_markup">True</property>
                   </object>
                 </child>
@@ -76,16 +89,7 @@
               </packing>
             </child>
             <child>
-              <object class="GtkSeparator" id="separator1">
-                <property name="height_request">10</property>
-                <property name="visible">True</property>
-                <property name="can_focus">False</property>
-              </object>
-              <packing>
-                <property name="expand">True</property>
-                <property name="fill">True</property>
-                <property name="position">2</property>
-              </packing>
+              <placeholder/>
             </child>
             <child>
               <object class="GtkToggleButton" id="automatico">
@@ -98,8 +102,9 @@
                 <property name="active">True</property>
               </object>
               <packing>
-                <property name="expand">False</property>
+                <property name="expand">True</property>
                 <property name="fill">True</property>
+                <property name="pack_type">end</property>
                 <property name="position">3</property>
               </packing>
             </child>
