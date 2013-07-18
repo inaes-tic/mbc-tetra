@@ -9,9 +9,14 @@ import gi
 
 from gi.repository import GObject
 from gi.repository import GLib
+from gi.repository import Gst
+from gi.repository import GstVideo
 from gi.repository import Gtk
+from gi.repository import Gdk
+from gi.repository import GdkX11
 
 import config
+from common import *
 
 import input_sources
 
@@ -89,6 +94,92 @@ class SoundMixWidget(Gtk.Box):
         self.mix_source = source
         self.emit('set-mix-source', source)
         self.config['mix-source'] = source
+
+
+class PreviewWidget(Gtk.Box):
+    __gsignals__ = {
+       "mute": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT]),
+       "volume": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT]),
+       "preview-clicked": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+    }
+    def __init__(self, source=None):
+        Gtk.Box.__init__(self)
+        builder = Gtk.Builder ()
+        self.builder = builder
+        self.source = source
+
+        builder.add_objects_from_file (config.get('preview_ui','preview_box.ui'), ['PreviewBoxItem'])
+        preview = builder.get_object('PreviewBoxItem')
+        self.add(preview)
+
+        slider = builder.get_object ('volume')
+        slider.connect ("value-changed", self.__slider_cb)
+
+        bars = []
+        bar_l = builder.get_object ('peak_L')
+        if bar_l:
+            bars.append(bar_l)
+        bar_r = builder.get_object ('peak_R')
+        if bar_r:
+            bars.append(bar_r)
+
+        self.bars = bars
+
+        mute = builder.get_object ('mute')
+        mute.connect ("toggled", self.__mute_cb)
+
+        self.set_source(source)
+        self.connect('map', self.__map_event_cb)
+
+    def set_source(self, source=None):
+        da = self.builder.get_object('preview')
+        da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
+
+        if source:
+            da.connect('button-press-event', self.__preview_click_cb)
+            spinner = self.builder.get_object('spinner')
+            if spinner:
+                preview.remove(spinner)
+                spinner.destroy()
+
+            da.show()
+            window = da.get_property('window')
+            if window:
+                source.xvsink.set_window_handle(window.get_xid())
+
+            self.source = source
+
+    def set_levels (self, peaks):
+        Gdk.threads_enter ()
+        for bar,peak in zip(self.bars, peaks):
+            frac = 1.0 - peak/MIN_PEAK
+            if frac < 0:
+                frac = 0
+            elif frac > 1:
+                frac = 1
+            bar.set_fraction (frac)
+        Gdk.threads_leave ()
+        return True
+
+    def __mute_cb(self, widget, *data):
+        mute = widget.get_active()
+        self.emit('mute', self.source, mute)
+        if self.source:
+            self.source.set_mute(mute)
+
+    def __slider_cb(self, widget, value, *data):
+        self.emit('volume', self.source, value)
+        if self.source:
+            self.source.set_volume(value)
+
+    def __preview_click_cb (self, widget, event, *data):
+        self.emit('preview-clicked', self.source)
+
+    def __map_event_cb(self, *args):
+        if not self.source:
+            return
+        da = self.builder.get_object('preview')
+        self.source.xvsink.set_window_handle(da.get_property('window').get_xid())
 
 
 if __name__ == '__main__':

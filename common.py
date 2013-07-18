@@ -33,6 +33,8 @@ MIN_ON_AIR_TIME = 3
 DEFAULT_NOISE_BASELINE = -45
 NOISE_THRESHOLD = 6
 SPEAK_UP_THRESHOLD = 3
+# everything below this maps to -inf for display purposes
+MIN_PEAK = -70
 
 MANUAL=False
 
