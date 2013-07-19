@@ -24,9 +24,26 @@ if not Gst.is_initialized():
 from common import *
 import config
 
-class AutoOutput(Gst.Bin):
-    def __init__(self, name=None):
+class BaseOutput(Gst.Bin):
+    def __init__(self):
         Gst.Bin.__init__(self)
+
+    def __contains__ (self, item):
+        return item in self.children
+
+    def initialize(self):
+        pass
+
+    def start_file_recording(self, location=None):
+        pass
+
+    def stop_file_recording():
+        pass
+
+
+class AutoOutput(BaseOutput):
+    def __init__(self, name=None):
+        BaseOutput.__init__(self)
         if name:
             self.set_property('name', name)
 
@@ -50,15 +67,13 @@ class AutoOutput(Gst.Bin):
         self.add_pad(vgpad)
         self.add_pad(agpad)
 
-    def __contains__ (self, item):
-        return item in self.children
-
     def initialize(self):
         self.preview_sink.set_property('sync', XV_SYNC)
 
-class MP4Output(Gst.Bin):
+
+class MP4Output(BaseOutput):
     def __init__(self, name=None):
-        Gst.Bin.__init__(self)
+        BaseOutput.__init__(self)
         if name:
             self.set_property('name', name)
 
@@ -130,15 +145,10 @@ class MP4Output(Gst.Bin):
         self.add_pad(vgpad)
         self.add_pad(agpad)
 
-    def __contains__ (self, item):
-        return item in self.children
 
-    def initialize(self):
-        pass
-
-class FLVOutput(Gst.Bin):
+class FLVOutput(BaseOutput):
     def __init__(self, name=None):
-        Gst.Bin.__init__(self)
+        BaseOutput.__init__(self)
         if name:
             self.set_property('name', name)
 
@@ -196,11 +206,6 @@ class FLVOutput(Gst.Bin):
         self.add_pad(vgpad)
         self.add_pad(agpad)
 
-    def __contains__ (self, item):
-        return item in self.children
-
-    def initialize(self):
-        pass
 
 class StreamWriter(Gst.Bin):
     def __init__(self, name=None, location='/dev/null', append=False):
