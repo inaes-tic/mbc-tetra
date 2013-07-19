@@ -124,7 +124,7 @@ class TetraApp(GObject.GObject):
         self.pipeline.add(source)
         self.inputs.append(source)
 
-        source.link_filtered(self.amixer, AUDIO_CAPS)
+        source.link(self.amixer)
         source.link(self.inputsel)
 
         self.preview_sinks.append(source.xvsink)
