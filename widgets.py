@@ -139,7 +139,7 @@ class PreviewWidget(Gtk.Box):
             da.connect('button-press-event', self.__preview_click_cb)
             spinner = self.builder.get_object('spinner')
             if spinner:
-                self.builder.get_object('PreviewBoxItem').remove(spinner)
+                self.builder.get_object('preview_container').remove(spinner)
                 spinner.destroy()
 
             da.show()
