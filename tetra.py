@@ -130,13 +130,10 @@ class MainWindow(object):
         Gdk.threads_leave ()
 
     def source_disconnected_cb (self, app, source, idx):
-        try:
-            child = self.preview_box.get_children()[idx]
-            self.preview_box.remove(child)
-            self.bars.pop(idx)
-            child.destroy()
-        except IndexError:
-            pass
+        if source in self.previews:
+            preview = self.previews[source]
+            self.preview_box.remove(preview)
+            preview.destroy()
         return True
 
     def update_levels (self, app, source, peaks):
