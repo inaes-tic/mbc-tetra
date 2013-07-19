@@ -146,6 +146,7 @@ class PreviewWidget(Gtk.Box):
             window = da.get_property('window')
             if window:
                 source.xvsink.set_window_handle(window.get_xid())
+                source.xvsink.set_property('sync', XV_SYNC)
 
             self.source = source
 
