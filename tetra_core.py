@@ -25,8 +25,8 @@ from output_sinks import AutoOutput, MP4Output, FLVOutput
 
 class TetraApp(GObject.GObject):
     __gsignals__ = {
-       "level": (GObject.SIGNAL_RUN_FIRST, None, (int,GObject.TYPE_PYOBJECT)),
-       "insert-level": (GObject.SIGNAL_RUN_FIRST, None, (int,GObject.TYPE_PYOBJECT)),
+       "level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
+       "insert-level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
        "master-level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
        "prepare-xwindow-id": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
        "prepare-window-handle": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
@@ -397,10 +397,10 @@ class TetraApp(GObject.GObject):
                     self.audio_avg[idx].append (rms)
                     self.audio_peak[idx].append (peak)
                     #logging.debug('LEVEL idx %d, avg %f peak %f', idx, rms, peak)
-                    self.emit('level', idx, apeak)
+                    self.emit('level', parent, apeak)
                 elif parent in self.audio_inserts:
                     idx = self.audio_inserts.index(parent)
-                    self.emit('insert-level', idx, apeak)
+                    self.emit('insert-level', parent, apeak)
                 elif msg.src is self.master_level:
                     self.emit('master-level', apeak)
         return True
