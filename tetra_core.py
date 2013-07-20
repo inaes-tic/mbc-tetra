@@ -28,8 +28,8 @@ class TetraApp(GObject.GObject):
        "level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
        "insert-level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
        "master-level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
-       "prepare-xwindow-id": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
-       "prepare-window-handle": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
+       "prepare-xwindow-id": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT, GObject.TYPE_PYOBJECT)),
+       "prepare-window-handle": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT, GObject.TYPE_PYOBJECT)),
        "source-disconnected": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
     }
     def __init__(self):
@@ -374,8 +374,7 @@ class TetraApp(GObject.GObject):
             return True
         s = msg.get_structure()
         if s.get_name() in  ("prepare-xwindow-id", "prepare-window-handle"):
-            idx = self.preview_sinks.index(msg.src)
-            self.emit (s.get_name(), msg.src, idx)
+            self.emit (s.get_name(), msg.src, msg.src.get_parent())
             return True
 
     def bus_element_cb (self, bus, msg, arg=None):
