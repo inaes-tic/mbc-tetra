@@ -230,11 +230,16 @@ class TetraApp(GObject.GObject):
         if not self._initialized:
             self.__initialize()
 
+        if not self.inputs:
+            return False
+
+        self.live_sink.expose()
         # if started with no cameras connected we need to set the state
         # of every input manually. (we call start() again when new devices are
         # added to sync everything)
         state = self.pipeline.get_state(0)
-        if state[1] == Gst.State.READY:
+        logging.debug('STARTING, CURRENT STATE: %s', state)
+        if state[1] in [Gst.State.READY, Gst.State.PAUSED]:
             for src in self.inputs:
                 src.initialize()
                 src.set_state (Gst.State.PLAYING)
@@ -242,11 +247,13 @@ class TetraApp(GObject.GObject):
                 src.initialize()
                 src.set_state (Gst.State.PLAYING)
 
+
         for sink in self.outputs:
             sink.initialize()
             sink.set_state (Gst.State.PLAYING)
 
         ret = self.pipeline.set_state (Gst.State.PLAYING)
+
         logging.debug('STARTING ret= %s', ret)
         GLib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
 
@@ -365,6 +372,9 @@ class TetraApp(GObject.GObject):
         self.emit('source-disconnected', source, idx)
         self.pipeline.set_state (Gst.State.PLAYING)
         logging.debug('SOURCE REMOVED CB ENDED')
+
+        if not self.inputs:
+            self.pipeline.set_state(Gst.State.NULL)
 
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_source_removed')
 
