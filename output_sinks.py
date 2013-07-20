@@ -25,8 +25,15 @@ from common import *
 import config
 
 class BaseOutput(Gst.Bin):
+    __gsignals__ = {
+       "ready-to-record": (GObject.SIGNAL_RUN_FIRST, None, []),
+       "record-stopped": (GObject.SIGNAL_RUN_FIRST, None, []),
+    }
     def __init__(self):
         Gst.Bin.__init__(self)
+        self.filename_suffix = ''
+        self.stream_writer = None
+        self._stream_writer_sources = []
 
     def __contains__ (self, item):
         return item in self.children
@@ -34,12 +41,68 @@ class BaseOutput(Gst.Bin):
     def initialize(self):
         pass
 
+    def get_record_filename(self, folder=None, name_template=None):
+        conf = config.get('FileArchiving', {})
+        if folder is None:
+            folder = conf.setdefault('folder', None)
+        if name_template is None:
+            name_template = conf.setdefault('name_template', 'captura_tetra')
+
+        if folder is None:
+            return False
+
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
+
+        now = time.localtime()
+        now = time.strftime("%Y-%m-%d-%H:%M:%S", now)
+
+        name = '%s-%s%s' % (name_template, now, self.filename_suffix)
+        fullname = os.path.join(folder, name)
+
+        return fullname
+
+    def _build_muxer(self, *args):
+        return None
+
+    def stop_file_recording(self):
+        sw = self.stream_writer
+        if sw:
+            sw.stop()
+        else:
+            self.emit('record-stopped')
+
     def start_file_recording(self, location=None):
-        pass
+        def sw_stopped_cb(ssw):
+            self.remove(ssw)
+            self.stream_writer = None
+            self.emit('record-stopped')
 
-    def stop_file_recording():
-        pass
+        def add_sw(location='/dev/null'):
+            mux = self._build_muxer()
+            if not mux:
+                return False
+            sw = MuxedFileWriter(mux, location=location)
+            sw.connect('stopped', sw_stopped_cb)
+            self.stream_writer = sw
+            self.add(sw)
 
+            for src in self._stream_writer_sources:
+                src.link(sw)
+            sw.set_state(self.get_state(0)[1])
+            return True
+
+        if self.stream_writer is None:
+            location = self.get_record_filename()
+            if location and add_sw(location):
+                logging.debug('Start archiving to: %s', location)
+                self.emit('ready-to-record')
+            else:
+                return False
+        else:
+            self.stream_writer.stop()
+
+        return True
 
 class AutoOutput(BaseOutput):
     def __init__(self, name=None):
@@ -52,7 +115,6 @@ class AutoOutput(BaseOutput):
 
         self.asink = Gst.ElementFactory.make('autoaudiosink', 'audio sink')
         self.vsink = Gst.ElementFactory.make('xvimagesink', 'video sink')
-        self.vsink.set_property('draw-borders', False)
         self.preview_sink = self.vsink
 
         for el in [self.aq, self.vq, self.asink, self.vsink]:
@@ -77,6 +139,7 @@ class MP4Output(BaseOutput):
         BaseOutput.__init__(self)
         if name:
             self.set_property('name', name)
+        self.filename_suffix = '.mp4'
 
         conf = config.get('MP4Output', {})
         self.conf = conf
@@ -88,7 +151,13 @@ class MP4Output(BaseOutput):
         vmuxaiq = Gst.ElementFactory.make('queue2', 'video mux audio in q')
         self.preview_sink = None
 
+        streamvq = Gst.ElementFactory.make('queue2', 'video archive q')
+        streamaq = Gst.ElementFactory.make('queue2', 'audio archive q')
+##        for q in [streamvq, streamaq]:
+##            q.set_property('max-size-time', 10*Gst.SECOND)
+
         aenc = Gst.ElementFactory.make('avenc_aac', None)
+        aenc.set_property('bitrate', conf.get('audio_bitrate', 192000))
 
         vsink = Gst.ElementFactory.make ('tcpserversink', None)
         # remember to change them in the streaming server if you
@@ -96,7 +165,7 @@ class MP4Output(BaseOutput):
         vsink.set_property('host', conf.get('host', '127.0.0.1'))
         vsink.set_property('port', conf.get('port', 9078))
 
-        vmux = self.make_mp4mux()
+        vmux = self._build_muxer()
 
         parser = Gst.ElementFactory.make ('h264parse', None)
         parser.set_property ('config-interval',2)
@@ -127,7 +196,7 @@ class MP4Output(BaseOutput):
         self.aenct = aenct
         self.venct = venct
 
-        for el in [aq, vq, aenc, venc, aenct, venct, parser, vmux, vmuxoq, vmuxviq, vmuxaiq, vsink]:
+        for el in [aq, vq, aenc, venc, aenct, venct, parser, vmux, vmuxoq, vmuxviq, vmuxaiq, streamvq, streamaq, vsink]:
             self.add(el)
 
         aq.link(aenc)
@@ -144,6 +213,11 @@ class MP4Output(BaseOutput):
         vmux.link(vmuxoq)
         vmuxoq.link(vsink)
 
+        venct.link(streamvq)
+        aenct.link(streamaq)
+
+        self._stream_writer_sources.append(streamvq)
+        self._stream_writer_sources.append(streamaq)
 
         agpad = Gst.GhostPad.new('audiosink', aq.get_static_pad('sink'))
         vgpad = Gst.GhostPad.new('videosink', vq.get_static_pad('sink'))
@@ -151,7 +225,8 @@ class MP4Output(BaseOutput):
         self.add_pad(vgpad)
         self.add_pad(agpad)
 
-    def make_mp4mux(self):
+
+    def _build_muxer(self):
         vmux = Gst.ElementFactory.make ('mp4mux', None)
         vmux.set_property('streamable', True)
         vmux.set_property('fragment-duration', 1000)
@@ -162,7 +237,6 @@ class MP4Output(BaseOutput):
         # line 2800.
         vmux.set_property('dts-method', 2) # ascending
 
-        vmux.set_property('streamable', True)
         return vmux
 
 
@@ -225,6 +299,80 @@ class FLVOutput(BaseOutput):
 
         self.add_pad(vgpad)
         self.add_pad(agpad)
+
+
+class MuxedFileWriter(Gst.Bin):
+    __gsignals__ = {
+       "stopped": (GObject.SIGNAL_RUN_FIRST, None, []),
+    }
+    def __init__(self, mux, name=None, location='/dev/null', append=True, pad_names=None):
+        Gst.Bin.__init__(self)
+        if name:
+            self.set_property('name', name)
+
+
+        q = Gst.ElementFactory.make('queue2', None)
+
+        fsink = Gst.ElementFactory.make('filesink', None)
+        fsink.set_property('append', append)
+        fsink.set_property('location', location)
+
+        self.mux = mux
+        self.fsink = fsink
+
+        for el in [mux, q, fsink]:
+            self.add(el)
+
+        mux.link(q)
+        q.link(fsink)
+
+        # XXX FIXME: need to make this work in a dynamic fashion
+        if pad_names is None:
+            pad_names = ['video_%u', 'audio_%u']
+        for name in pad_names:
+            pad = mux.get_request_pad(name)
+            gpad = Gst.GhostPad.new(name, pad)
+            self.add_pad(gpad)
+
+    def __set_to_null_and_stop(self):
+        self.set_state(Gst.State.NULL)
+        for pad in self.pads:
+            peer = pad.get_peer()
+            if peer is not None:
+                logging.debug('UNLINK PAD %s', pad)
+                # we are a sink, so the roles of pad and peer are reversed
+                # with respect to the same block in input_sources.py
+                peer.unlink(pad)
+                parent = peer.get_parent()
+
+                presence = None
+                tmpl = peer.get_pad_template()
+                if tmpl:
+                    presence = tmpl.presence
+                if parent and (presence == Gst.PadPresence.REQUEST):
+                    logging.debug('BEFORE PAD PARENT RELEASE PAD')
+                    parent.release_request_pad(peer)
+                    logging.debug('PAD PARENT RELEASE PAD OK')
+        self.emit('stopped')
+
+    def stop(self, *args):
+        probes = []
+        pads = self.pads
+
+        def pad_block_cb(pad, probe_info, *data):
+            ok = True
+            for pad in pads:
+                if pad.is_blocked() == False:
+                    ok = False
+            if ok:
+                GLib.timeout_add(0, self.__set_to_null_and_stop)
+            return Gst.PadProbeReturn.REMOVE
+
+        for pad in pads:
+            probes.append( [pad, pad.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM | Gst.PadProbeType.BLOCK_UPSTREAM, pad_block_cb, None)] )
+
+        if self.get_state(0)[1] != Gst.State.PLAYING:
+            GLib.timeout_add(0, self.__set_to_null_and_stop)
 
 
 class StreamWriter(Gst.Bin):
