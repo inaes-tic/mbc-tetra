@@ -85,6 +85,7 @@ class MP4Output(BaseOutput):
         vq = Gst.ElementFactory.make('queue2', 'video q')
         vmuxoq = Gst.ElementFactory.make('queue2', 'video mux out q')
         vmuxviq = Gst.ElementFactory.make('queue2', 'video mux video in q')
+        vmuxaiq = Gst.ElementFactory.make('queue2', 'video mux audio in q')
         self.preview_sink = None
 
         aenc = Gst.ElementFactory.make('avenc_aac', None)
@@ -95,17 +96,7 @@ class MP4Output(BaseOutput):
         vsink.set_property('host', conf.get('host', '127.0.0.1'))
         vsink.set_property('port', conf.get('port', 9078))
 
-        vmux = Gst.ElementFactory.make ('mp4mux', None)
-        vmux.set_property('streamable', True)
-        vmux.set_property('fragment-duration', 1000)
-
-        # the default (reorder) gives a nicer and faster a/v sync
-        # but x264 produces frames with  DTS timestamp and that doesn't need
-        # to be always increasing. So mp4mux is not happy, see gstqtmux.c around
-        # line 2800.
-        vmux.set_property('dts-method', 2) # ascending
-
-        vmux.set_property('streamable', True)
+        vmux = self.make_mp4mux()
 
         parser = Gst.ElementFactory.make ('h264parse', None)
         parser.set_property ('config-interval',2)
@@ -131,16 +122,24 @@ class MP4Output(BaseOutput):
 
         venc.set_property ('bitrate', conf.get('x264_bitrate', 1024))
 
-        for el in [aq, vq, aenc, venc, parser, vmux, vmuxoq, vmuxviq, vsink]:
+        aenct = Gst.ElementFactory.make('tee', 'audio enc t')
+        venct = Gst.ElementFactory.make('tee', 'video enc t')
+        self.aenct = aenct
+        self.venct = venct
+
+        for el in [aq, vq, aenc, venc, aenct, venct, parser, vmux, vmuxoq, vmuxviq, vmuxaiq, vsink]:
             self.add(el)
 
         aq.link(aenc)
-        aenc.link(vmux)
+        aenc.link(aenct)
+        aenct.link(vmuxaiq)
+        vmuxaiq.link(vmux)
 
         vq.link_filtered(venc, VIDEO_CAPS_SIZE)
 
         venc.link(parser)
-        parser.link(vmuxviq)
+        parser.link(venct)
+        venct.link(vmuxviq)
         vmuxviq.link(vmux)
         vmux.link(vmuxoq)
         vmuxoq.link(vsink)
@@ -151,6 +150,20 @@ class MP4Output(BaseOutput):
 
         self.add_pad(vgpad)
         self.add_pad(agpad)
+
+    def make_mp4mux(self):
+        vmux = Gst.ElementFactory.make ('mp4mux', None)
+        vmux.set_property('streamable', True)
+        vmux.set_property('fragment-duration', 1000)
+
+        # the default (reorder) gives a nicer and faster a/v sync
+        # but x264 produces frames with  DTS timestamp and that doesn't need
+        # to be always increasing. So mp4mux is not happy, see gstqtmux.c around
+        # line 2800.
+        vmux.set_property('dts-method', 2) # ascending
+
+        vmux.set_property('streamable', True)
+        return vmux
 
 
 class FLVOutput(BaseOutput):
