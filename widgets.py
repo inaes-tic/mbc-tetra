@@ -107,6 +107,7 @@ class PreviewWidget(Gtk.Box):
         builder = Gtk.Builder ()
         self.builder = builder
         self.source = source
+        self.xid = None
 
         builder.add_objects_from_file (config.get('preview_ui','preview_box.ui'), ['PreviewBoxItem'])
         preview = builder.get_object('PreviewBoxItem')
@@ -132,23 +133,31 @@ class PreviewWidget(Gtk.Box):
         self.connect('map', self.__map_event_cb)
 
     def set_source(self, source=None):
-        da = self.builder.get_object('preview')
-        da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
-
         if source:
+            da = self.builder.get_object('preview')
+            da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
+            self.source = source
             da.connect('button-press-event', self.__preview_click_cb)
+            da.show()
             spinner = self.builder.get_object('spinner')
+
             if spinner:
                 self.builder.get_object('preview_container').remove(spinner)
                 spinner.destroy()
 
-            da.show()
-            window = da.get_property('window')
-            if window:
-                source.xvsink.set_window_handle(window.get_xid())
-                source.xvsink.set_property('sync', XV_SYNC)
+            self.set_window_handle(safe=True)
 
-            self.source = source
+    def set_window_handle(self, safe=False):
+        if not self.source:
+            return
+        if safe:
+            self.__get_xid()
+
+        if self.xid is not None:
+            Gdk.threads_enter ()
+            self.source.xvsink.set_window_handle(self.xid)
+            self.source.xvsink.set_property('sync', XV_SYNC)
+            Gdk.threads_leave ()
 
     def set_levels (self, peaks):
         Gdk.threads_enter ()
@@ -177,10 +186,14 @@ class PreviewWidget(Gtk.Box):
         self.emit('preview-clicked', self.source)
 
     def __map_event_cb(self, *args):
-        if not self.source:
-            return
+        self.__get_xid()
+
+    def __get_xid(self):
         da = self.builder.get_object('preview')
-        self.source.xvsink.set_window_handle(da.get_property('window').get_xid())
+        window = da.get_property('window')
+        if window:
+            self.xid = window.get_xid()
+        return True
 
 
 if __name__ == '__main__':

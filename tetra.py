@@ -24,6 +24,7 @@ Gtk.init(sys.argv)
 Gdk.init(sys.argv)
 
 import config
+from common import *
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
 from widgets import SoundMixWidget, PreviewWidget
@@ -63,6 +64,8 @@ class MainWindow(object):
             self.app.add_input_source(source)
 
         live = self.builder.get_object('LiveOut')
+        self.live = live
+        self.live_xid = live.get_property('window').get_xid()
         live.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
         live.connect('button-press-event', self.live_click_cb)
         live.connect('draw', self.live_draw_cb)
@@ -73,6 +76,7 @@ class MainWindow(object):
 
         app.connect('level', self.update_levels)
         app.connect('source-disconnected', self.source_disconnected_cb)
+        app.connect('prepare-window-handle', self.prepare_window_handle_cb)
         self.imon.connect('added', self.source_added_cb)
         self.imon.start()
 
@@ -83,6 +87,7 @@ class MainWindow(object):
             self.previews[source] = preview
             preview.set_source(source)
             self.app.add_input_source(source)
+            self.app.live_sink.set_property('sync', XV_SYNC)
             self.app.start()
             Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.CAPS_DETAILS , 'source_added_cb')
             #source.set_state(Gst.State.PLAYING)
@@ -122,12 +127,16 @@ class MainWindow(object):
     def preview_click_cb (self, widget, source):
         self.app.set_active_input_by_source (source)
 
-    def prepare_xwindow_id_cb (self, app, sink, idx):
-        return True
-        Gdk.threads_enter ()
-        sink.set_property ("force-aspect-ratio", True)
-        sink.set_xwindow_id (self.previews[idx].window.xid)
-        Gdk.threads_leave ()
+    def prepare_window_handle_cb (self, app, xvimagesink, source):
+        if source in self.previews:
+            logging.debug('prepare window handle %s', source)
+            self.previews[source].set_window_handle()
+            return True
+        elif xvimagesink is self.app.live_sink:
+            Gdk.threads_enter ()
+            xvimagesink.set_window_handle(self.live_xid)
+            xvimagesink.set_property('sync', XV_SYNC)
+            Gdk.threads_leave ()
 
     def source_disconnected_cb (self, app, source, idx):
         if source in self.previews:
