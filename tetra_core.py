@@ -31,12 +31,16 @@ class TetraApp(GObject.GObject):
        "prepare-xwindow-id": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT, GObject.TYPE_PYOBJECT)),
        "prepare-window-handle": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT, GObject.TYPE_PYOBJECT)),
        "source-disconnected": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
+       "record-started": (GObject.SIGNAL_RUN_FIRST, None, []),
+       "record-stopped": (GObject.SIGNAL_RUN_FIRST, None, []),
     }
     def __init__(self):
         GObject.GObject.__init__(self)
         self.current_input = INPUT_COUNT - 1
         self._automatic = True
         self._initialized = False
+        self._rec_ok_cnt = 0
+        self._about_to_record = False
 
         self.noise_baseline = DEFAULT_NOISE_BASELINE
         self.speak_up_threshold = SPEAK_UP_THRESHOLD
@@ -102,7 +106,8 @@ class TetraApp(GObject.GObject):
         self.live_sink = sink.preview_sink
         self.add_output_sink(sink)
 
-        sink = FLVOutput()
+        sink = MP4Output()
+        #sink = FLVOutput()
         self.add_output_sink(sink)
 
 
@@ -114,6 +119,8 @@ class TetraApp(GObject.GObject):
         self.asink.link_filtered(sink, AUDIO_CAPS)
 
         sink.initialize()
+        sink.connect('ready-to-record', self._start_record_ok)
+        sink.connect('record-stopped', self._record_stopped)
         sink.set_state(self.pipeline.get_state(0)[1])
 
     def add_input_source(self, source):
@@ -256,6 +263,55 @@ class TetraApp(GObject.GObject):
 
         logging.debug('STARTING ret= %s', ret)
         GLib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
+
+
+    def _start_record_ok(self, sink, *data):
+        if self._rec_ok_cnt:
+            self._rec_ok_cnt -= 1
+        if self._rec_ok_cnt == 0:
+            self.pipeline.set_state(Gst.State.PLAYING)
+            self.emit('record-started')
+
+    def __start_file_recording(self):
+        # this is a quick and dirty way to avoid negotiation errors.
+        # We go to READY and when every output capable of file writing
+        # has replaced the old stream writer with a fresh one we go again
+        # into PLAYING.
+        self._rec_ok_cnt = 0
+
+        self.pipeline.set_state(Gst.State.READY)
+        for out in self.outputs:
+            if out.start_file_recording():
+                self._rec_ok_cnt += 1
+
+        # no sink was able to start recording
+        if self._rec_ok_cnt == 0:
+            self.pipeline.set_state(Gst.State.PLAYING)
+
+    def _record_stopped(self, sink, *data):
+        if self._rec_stop_cnt:
+            self._rec_stop_cnt -= 1
+            if self._rec_stop_cnt == 0:
+                if self._about_to_record:
+                    self.__start_file_recording()
+                    self._about_to_record = False
+                else:
+                    self.emit('record-stopped')
+
+    def start_file_recording(self):
+        if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
+            return
+
+        self._rec_stop_cnt = len(self.outputs)
+        self._about_to_record = True
+        for out in self.outputs:
+            out.stop_file_recording()
+
+
+    def stop_file_recording(self):
+        self._rec_stop_cnt = len(self.outputs)
+        for out in self.outputs:
+            out.stop_file_recording()
 
     def calibrate_bg_noise (self, *args):
         bgnoise = 0
