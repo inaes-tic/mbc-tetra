@@ -52,6 +52,7 @@ class AutoOutput(BaseOutput):
 
         self.asink = Gst.ElementFactory.make('autoaudiosink', 'audio sink')
         self.vsink = Gst.ElementFactory.make('xvimagesink', 'video sink')
+        self.vsink.set_property('draw-borders', False)
         self.preview_sink = self.vsink
 
         for el in [self.aq, self.vq, self.asink, self.vsink]:
@@ -77,6 +78,9 @@ class MP4Output(BaseOutput):
         if name:
             self.set_property('name', name)
 
+        conf = config.get('MP4Output', {})
+        self.conf = conf
+
         aq = Gst.ElementFactory.make('queue2', 'audio q')
         vq = Gst.ElementFactory.make('queue2', 'video q')
         vmuxoq = Gst.ElementFactory.make('queue2', 'video mux out q')
@@ -86,8 +90,11 @@ class MP4Output(BaseOutput):
         aenc = Gst.ElementFactory.make('avenc_aac', None)
 
         vsink = Gst.ElementFactory.make ('tcpserversink', None)
-        vsink.set_property('host', '127.0.0.1')
-        vsink.set_property('port', 9078)
+        # remember to change them in the streaming server if you
+        # stray away from the defaults
+        vsink.set_property('host', conf.get('host', '127.0.0.1'))
+        vsink.set_property('port', conf.get('port', 9078))
+
         vmux = Gst.ElementFactory.make ('mp4mux', None)
         vmux.set_property('streamable', True)
         vmux.set_property('fragment-duration', 1000)
@@ -106,7 +113,8 @@ class MP4Output(BaseOutput):
         venc = Gst.ElementFactory.make ('x264enc', None)
         venc.set_property('byte-stream', True)
         venc.set_property('tune', 'zerolatency')
-        venc.set_property('speed-preset', 'ultrafast')
+        # it gives unicode but x264enc wants str
+        venc.set_property('speed-preset', str(conf.get('x264_speed_preset', 'ultrafast')))
         # while it might be usefull to avoid showing artifacts for a while
         # touching it plays havoc with mp4mux and the default reorder method.
         # https://bugzilla.gnome.org/show_bug.cgi?id=631855
@@ -121,7 +129,7 @@ class MP4Output(BaseOutput):
         venc.set_property('b-adapt', False)
         venc.set_property('bframes', 0)
 
-        venc.set_property ('bitrate',1024)
+        venc.set_property ('bitrate', conf.get('x264_bitrate', 1024))
 
         for el in [aq, vq, aenc, venc, parser, vmux, vmuxoq, vmuxviq, vsink]:
             self.add(el)
@@ -129,8 +137,7 @@ class MP4Output(BaseOutput):
         aq.link(aenc)
         aenc.link(vmux)
 
-        caps = Gst.Caps.from_string ('video/x-raw,width=%d,heigth=%d,framerate=30/1' % (VIDEO_WIDTH, VIDEO_HEIGTH))
-        vq.link_filtered(venc, caps)
+        vq.link_filtered(venc, VIDEO_CAPS_SIZE)
 
         venc.link(parser)
         parser.link(vmuxviq)
