@@ -157,13 +157,13 @@ class MP4Output(BaseOutput):
 ##            q.set_property('max-size-time', 10*Gst.SECOND)
 
         aenc = Gst.ElementFactory.make('avenc_aac', None)
-        aenc.set_property('bitrate', conf.get('audio_bitrate', 192000))
+        aenc.set_property('bitrate', conf.setdefault('audio_bitrate', 192000))
 
         vsink = Gst.ElementFactory.make ('tcpserversink', None)
         # remember to change them in the streaming server if you
         # stray away from the defaults
-        vsink.set_property('host', conf.get('host', '127.0.0.1'))
-        vsink.set_property('port', conf.get('port', 9078))
+        vsink.set_property('host', conf.setdefault('host', '127.0.0.1'))
+        vsink.set_property('port', conf.setdefault('port', 9078))
 
         vmux = self._build_muxer()
 
@@ -174,7 +174,7 @@ class MP4Output(BaseOutput):
         venc.set_property('byte-stream', True)
         venc.set_property('tune', 'zerolatency')
         # it gives unicode but x264enc wants str
-        venc.set_property('speed-preset', str(conf.get('x264_speed_preset', 'ultrafast')))
+        venc.set_property('speed-preset', str(conf.setdefault('x264_speed_preset', 'ultrafast')))
         # while it might be usefull to avoid showing artifacts for a while
         # touching it plays havoc with mp4mux and the default reorder method.
         # https://bugzilla.gnome.org/show_bug.cgi?id=631855
@@ -189,7 +189,7 @@ class MP4Output(BaseOutput):
         venc.set_property('b-adapt', False)
         venc.set_property('bframes', 0)
 
-        venc.set_property ('bitrate', conf.get('x264_bitrate', 1024))
+        venc.set_property ('bitrate', conf.setdefault('x264_bitrate', 1024))
 
         aenct = Gst.ElementFactory.make('tee', 'audio enc t')
         venct = Gst.ElementFactory.make('tee', 'video enc t')
@@ -259,8 +259,8 @@ class FLVOutput(BaseOutput):
         vsink = Gst.ElementFactory.make ('tcpserversink', None)
         # remember to change them in the streaming server if you
         # stray away from the defaults
-        vsink.set_property('host', conf.get('host', '127.0.0.1'))
-        vsink.set_property('port', conf.get('port', 9078))
+        vsink.set_property('host', conf.setdefault('host', '127.0.0.1'))
+        vsink.set_property('port', conf.setdefault('port', 9078))
 
         vmux = Gst.ElementFactory.make ('flvmux', None)
         vmux.set_property('streamable', True)
@@ -272,12 +272,12 @@ class FLVOutput(BaseOutput):
         venc.set_property('byte-stream', True)
         venc.set_property('tune', 'zerolatency')
         # it gives unicode but x264enc wants str
-        venc.set_property('speed-preset', str(conf.get('x264_speed_preset', 'ultrafast')))
+        venc.set_property('speed-preset', str(conf.setdefault('x264_speed_preset', 'ultrafast')))
 
         # It lowers the compression ratio but gives a stable image faster.
         venc.set_property ('key-int-max',30)
 
-        venc.set_property ('bitrate', conf.get('x264_bitrate', 1024))
+        venc.set_property ('bitrate', conf.setdefault('x264_bitrate', 1024))
 
         for el in [aq, vq, aenc, venc, parser, vmux, vmuxoq, vmuxviq, vsink]:
             self.add(el)
