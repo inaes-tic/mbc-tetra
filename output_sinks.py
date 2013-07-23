@@ -29,11 +29,83 @@ class BaseOutput(Gst.Bin):
        "ready-to-record": (GObject.SIGNAL_RUN_FIRST, None, []),
        "record-stopped": (GObject.SIGNAL_RUN_FIRST, None, []),
     }
+    filename_suffix = ''
+    _mux_pad_names = None
+    config_section = None
     def __init__(self):
         Gst.Bin.__init__(self)
-        self.filename_suffix = ''
+
+        if self.config_section is not None:
+            conf = config.get(self.config_section, {})
+            self.conf = conf
+
         self.stream_writer = None
+        self.preview_sink = None
         self._stream_writer_sources = []
+
+
+        venc = self._build_video_encoder()
+        vpar = self._build_video_parser()
+        aenc = self._build_audio_encoder()
+        vmux = self._build_muxer()
+        sink = self._build_sink()
+
+        els = [venc, aenc, vmux, sink]
+
+        if not all(els):
+            return
+
+        els.append(vpar)
+        for el in els:
+            if el: self.add(el)
+
+        aq = Gst.ElementFactory.make('queue2', 'audio q')
+        vq = Gst.ElementFactory.make('queue2', 'video q')
+
+        vmuxoq = Gst.ElementFactory.make('queue2', 'video mux out q')
+        vmuxviq = Gst.ElementFactory.make('queue2', 'video mux video in q')
+        vmuxaiq = Gst.ElementFactory.make('queue2', 'video mux audio in q')
+
+        streamvq = Gst.ElementFactory.make('queue2', 'video archive q')
+        streamaq = Gst.ElementFactory.make('queue2', 'audio archive q')
+
+        aenct = Gst.ElementFactory.make('tee', 'audio enc t')
+        venct = Gst.ElementFactory.make('tee', 'video enc t')
+        self.aenct = aenct
+        self.venct = venct
+
+        for el in [aq, vq, aenct, venct, vmuxoq, vmuxviq, vmuxaiq, streamvq, streamaq, ]:
+            self.add(el)
+
+        aq.link(aenc)
+        aenc.link(aenct)
+        aenct.link(vmuxaiq)
+        vmuxaiq.link(vmux)
+
+        vq.link_filtered(venc, VIDEO_CAPS_SIZE)
+
+        if vpar:
+            venc.link(vpar)
+            vpar.link(venct)
+        else:
+            venc.link(venct)
+
+        venct.link(vmuxviq)
+        vmuxviq.link(vmux)
+        vmux.link(vmuxoq)
+        vmuxoq.link(sink)
+
+        venct.link(streamvq)
+        aenct.link(streamaq)
+
+        self._stream_writer_sources.append(streamvq)
+        self._stream_writer_sources.append(streamaq)
+
+        agpad = Gst.GhostPad.new('audiosink', aq.get_static_pad('sink'))
+        vgpad = Gst.GhostPad.new('videosink', vq.get_static_pad('sink'))
+
+        self.add_pad(vgpad)
+        self.add_pad(agpad)
 
     def __contains__ (self, item):
         return item in self.children
@@ -62,7 +134,19 @@ class BaseOutput(Gst.Bin):
 
         return fullname
 
+    def _build_video_encoder(self, *args):
+        return None
+
+    def _build_video_parser(self, *args):
+        return None
+
+    def _build_audio_encoder(self, *args):
+        return None
+
     def _build_muxer(self, *args):
+        return None
+
+    def _build_sink(self, *args):
         return None
 
     def stop_file_recording(self):
@@ -82,7 +166,7 @@ class BaseOutput(Gst.Bin):
             mux = self._build_muxer()
             if not mux:
                 return False
-            sw = MuxedFileWriter(mux, location=location)
+            sw = MuxedFileWriter(mux, location=location, pad_names=self._mux_pad_names)
             sw.connect('stopped', sw_stopped_cb)
             self.stream_writer = sw
             self.add(sw)
@@ -134,42 +218,39 @@ class AutoOutput(BaseOutput):
         self.preview_sink.set_property('sync', XV_SYNC)
 
 
-class MP4Output(BaseOutput):
-    def __init__(self, name=None):
-        BaseOutput.__init__(self)
-        if name:
-            self.set_property('name', name)
-        self.filename_suffix = '.mp4'
+class BaseH264Output(BaseOutput):
+    def _build_video_parser(self, *args):
+        parser = Gst.ElementFactory.make ('h264parse', None)
+        parser.set_property ('config-interval',2)
+        return parser
 
-        conf = config.get('MP4Output', {})
-        self.conf = conf
-
-        aq = Gst.ElementFactory.make('queue2', 'audio q')
-        vq = Gst.ElementFactory.make('queue2', 'video q')
-        vmuxoq = Gst.ElementFactory.make('queue2', 'video mux out q')
-        vmuxviq = Gst.ElementFactory.make('queue2', 'video mux video in q')
-        vmuxaiq = Gst.ElementFactory.make('queue2', 'video mux audio in q')
-        self.preview_sink = None
-
-        streamvq = Gst.ElementFactory.make('queue2', 'video archive q')
-        streamaq = Gst.ElementFactory.make('queue2', 'audio archive q')
-##        for q in [streamvq, streamaq]:
-##            q.set_property('max-size-time', 10*Gst.SECOND)
-
+    def _build_audio_encoder(self, *args):
+        conf = self.conf
         aenc = Gst.ElementFactory.make('avenc_aac', None)
         aenc.set_property('bitrate', conf.setdefault('audio_bitrate', 192000))
+        return aenc
 
+    def _build_sink(self, *args):
+        conf = self.conf
         vsink = Gst.ElementFactory.make ('tcpserversink', None)
         # remember to change them in the streaming server if you
         # stray away from the defaults
         vsink.set_property('host', conf.setdefault('host', '127.0.0.1'))
         vsink.set_property('port', conf.setdefault('port', 9078))
 
-        vmux = self._build_muxer()
+        return vsink
 
-        parser = Gst.ElementFactory.make ('h264parse', None)
-        parser.set_property ('config-interval',2)
+class MP4Output(BaseH264Output):
+    _mux_pad_names = ['video_%u', 'audio_%u']
+    filename_suffix = '.mp4'
+    config_section = 'MP4Output'
+    def __init__(self, name=None):
+        BaseH264Output.__init__(self)
+        if name:
+            self.set_property('name', name)
 
+    def _build_video_encoder(self, *args):
+        conf = self.conf
         venc = Gst.ElementFactory.make ('x264enc', None)
         venc.set_property('byte-stream', True)
         venc.set_property('tune', 'zerolatency')
@@ -190,43 +271,10 @@ class MP4Output(BaseOutput):
         venc.set_property('bframes', 0)
 
         venc.set_property ('bitrate', conf.setdefault('x264_bitrate', 1024))
-
-        aenct = Gst.ElementFactory.make('tee', 'audio enc t')
-        venct = Gst.ElementFactory.make('tee', 'video enc t')
-        self.aenct = aenct
-        self.venct = venct
-
-        for el in [aq, vq, aenc, venc, aenct, venct, parser, vmux, vmuxoq, vmuxviq, vmuxaiq, streamvq, streamaq, vsink]:
-            self.add(el)
-
-        aq.link(aenc)
-        aenc.link(aenct)
-        aenct.link(vmuxaiq)
-        vmuxaiq.link(vmux)
-
-        vq.link_filtered(venc, VIDEO_CAPS_SIZE)
-
-        venc.link(parser)
-        parser.link(venct)
-        venct.link(vmuxviq)
-        vmuxviq.link(vmux)
-        vmux.link(vmuxoq)
-        vmuxoq.link(vsink)
-
-        venct.link(streamvq)
-        aenct.link(streamaq)
-
-        self._stream_writer_sources.append(streamvq)
-        self._stream_writer_sources.append(streamaq)
-
-        agpad = Gst.GhostPad.new('audiosink', aq.get_static_pad('sink'))
-        vgpad = Gst.GhostPad.new('videosink', vq.get_static_pad('sink'))
-
-        self.add_pad(vgpad)
-        self.add_pad(agpad)
-
+        return venc
 
     def _build_muxer(self):
+        conf = self.conf
         vmux = Gst.ElementFactory.make ('mp4mux', None)
         vmux.set_property('streamable', True)
         vmux.set_property('fragment-duration', 1000)
@@ -240,34 +288,17 @@ class MP4Output(BaseOutput):
         return vmux
 
 
-class FLVOutput(BaseOutput):
+class FLVOutput(BaseH264Output):
+    _mux_pad_names = ['audio', 'video']
+    filename_suffix = '.flv'
+    config_section = 'FLVOutput'
     def __init__(self, name=None):
-        BaseOutput.__init__(self)
+        BaseH264Output.__init__(self)
         if name:
             self.set_property('name', name)
 
-        conf = config.get('FLVOutput', {})
-
-        aq = Gst.ElementFactory.make('queue2', 'audio q')
-        vq = Gst.ElementFactory.make('queue2', 'video q')
-        vmuxoq = Gst.ElementFactory.make('queue2', 'video mux out q')
-        vmuxviq = Gst.ElementFactory.make('queue2', 'video mux video in q')
-        self.preview_sink = None
-
-        aenc = Gst.ElementFactory.make('avenc_aac', None)
-
-        vsink = Gst.ElementFactory.make ('tcpserversink', None)
-        # remember to change them in the streaming server if you
-        # stray away from the defaults
-        vsink.set_property('host', conf.setdefault('host', '127.0.0.1'))
-        vsink.set_property('port', conf.setdefault('port', 9078))
-
-        vmux = Gst.ElementFactory.make ('flvmux', None)
-        vmux.set_property('streamable', True)
-
-        parser = Gst.ElementFactory.make ('h264parse', None)
-        parser.set_property ('config-interval',2)
-
+    def _build_video_encoder(self, *args):
+        conf = self.conf
         venc = Gst.ElementFactory.make ('x264enc', None)
         venc.set_property('byte-stream', True)
         venc.set_property('tune', 'zerolatency')
@@ -276,29 +307,15 @@ class FLVOutput(BaseOutput):
 
         # It lowers the compression ratio but gives a stable image faster.
         venc.set_property ('key-int-max',30)
-
         venc.set_property ('bitrate', conf.setdefault('x264_bitrate', 1024))
 
-        for el in [aq, vq, aenc, venc, parser, vmux, vmuxoq, vmuxviq, vsink]:
-            self.add(el)
+        return venc
 
-        aq.link(aenc)
-        aenc.link(vmux)
+    def _build_muxer(self):
+        vmux = Gst.ElementFactory.make ('flvmux', None)
+        vmux.set_property('streamable', True)
+        return vmux
 
-        vq.link_filtered(venc, VIDEO_CAPS_SIZE)
-
-        venc.link(parser)
-        parser.link(vmuxviq)
-        vmuxviq.link(vmux)
-        vmux.link(vmuxoq)
-        vmuxoq.link(vsink)
-
-
-        agpad = Gst.GhostPad.new('audiosink', aq.get_static_pad('sink'))
-        vgpad = Gst.GhostPad.new('videosink', vq.get_static_pad('sink'))
-
-        self.add_pad(vgpad)
-        self.add_pad(agpad)
 
 
 class MuxedFileWriter(Gst.Bin):
