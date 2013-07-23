@@ -433,6 +433,10 @@ class TetraApp(GObject.GObject):
 
         if not self.inputs:
             self.pipeline.set_state(Gst.State.NULL)
+        else:
+            for inp in self.inputs:
+                sink.initialize()
+                sink.set_state(Gst.State.PLAYING)
 
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_source_removed')
 
