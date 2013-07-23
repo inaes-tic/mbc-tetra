@@ -33,6 +33,7 @@ class TetraApp(GObject.GObject):
        "source-disconnected": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
        "record-started": (GObject.SIGNAL_RUN_FIRST, None, []),
        "record-stopped": (GObject.SIGNAL_RUN_FIRST, None, []),
+       "state-changed": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
     }
     def __init__(self):
         GObject.GObject.__init__(self)
@@ -223,6 +224,7 @@ class TetraApp(GObject.GObject):
     def __initialize(self):
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
+        bus.connect("message::state-changed", self.bus_state_changed_cb)
         bus.connect("message::element", self.bus_element_cb)
         bus.connect("message", self.bus_message_cb)
         bus.enable_sync_message_emission()
@@ -231,6 +233,7 @@ class TetraApp(GObject.GObject):
         self.tid = GLib.timeout_add(int (UPDATE_INTERVAL * 1000), self.process_levels)
 
         self._initialized = True
+        self._last_state = [None, None, None]
 
     def start(self):
         if not self._initialized:
@@ -482,6 +485,15 @@ class TetraApp(GObject.GObject):
                 # input-selector doesn't quite like when you remove/unlink the active pad.
                 self.set_active_input(idx+1)
                 parent.disconnect_source()
+
+        return True
+
+    def bus_state_changed_cb (self, bus, msg, arg=None):
+        prev, new, pending = msg.parse_state_changed()
+        curr_state = [prev, new, pending]
+        if new != self._last_state[1]:
+            self.emit('state-changed', prev, new, pending)
+        self._last_state = curr_state
 
         return True
 
