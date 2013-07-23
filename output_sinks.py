@@ -348,7 +348,7 @@ class MuxedFileWriter(Gst.Bin):
             pad_names = ['video_%u', 'audio_%u']
         for name in pad_names:
             pad = mux.get_request_pad(name)
-            gpad = Gst.GhostPad.new(name, pad)
+            gpad = Gst.GhostPad.new(None, pad)
             self.add_pad(gpad)
 
     def __set_to_null_and_stop(self):
