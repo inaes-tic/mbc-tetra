@@ -24,6 +24,9 @@ if not Gst.is_initialized():
 GObject.threads_init()
 
 from common import *
+AUDIO_PROPS = { 'do-timestamp': True }
+VIDEO_PROPS = {}
+VIDEO_PROPS = { 'do-timestamp': True }
 
 class GeneralInputError(Exception):
     pass
@@ -164,6 +167,7 @@ class C920Input(BaseInput):
 
     def __add_video_source (self, props):
 # XXX FIXME: cambiar el jpeg por raw mas luego.
+        props.update(VIDEO_PROPS)
         name = props.get('name', 'v4l2src')
         src = Gst.ElementFactory.make (name, None)
         q0 = Gst.ElementFactory.make ('queue2', None)
@@ -198,12 +202,14 @@ class C920Input(BaseInput):
 
 
     def __add_audio_source (self, props):
+        props.update(AUDIO_PROPS)
         C920_AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,format=S16LE,rate=32000,channels=2')
         name = props.get('name', 'alsasrc')
         src = Gst.ElementFactory.make (name, None)
         q0 = Gst.ElementFactory.make ('queue2', None)
         q1 = Gst.ElementFactory.make ('queue2', None)
         q2 = Gst.ElementFactory.make ('queue2', None)
+        q3 = Gst.ElementFactory.make ('queue2', None)
         self.asink = q2
         tee = Gst.ElementFactory.make ('tee', None)
         volume = Gst.ElementFactory.make ('volume', None)
@@ -224,7 +230,7 @@ class C920Input(BaseInput):
         level.set_property ("message", True)
         self.level = level
 
-        for el in (src, q0, q1, q2, tee, volume, fasink, aconv, aconv2, ares, flt, level):
+        for el in (src, q0, q1, q2, q3, tee, volume, fasink, aconv, aconv2, ares, flt, level):
             self.add(el)
 
         if props:
@@ -235,7 +241,8 @@ class C920Input(BaseInput):
         q0.link (volume)
         volume.link (tee)
         tee.link (q1)
-        tee.link (aconv2)
+        tee.link (q3)
+        q3.link (aconv2)
         aconv2.link(ares)
         ares.link(q2)
         q1.link (aconv)
@@ -318,6 +325,7 @@ class TestInput(BaseInput):
         for el in (src, sink, q0, q1, q2, tee, conv):
             self.add(el)
 
+        props.update(VIDEO_PROPS)
         if props:
             for prop,val in props.items():
                 src.set_property(prop, val)
@@ -401,6 +409,7 @@ class AlsaInput(BaseInput):
     def __add_audio_source (self, props):
         if props is None:
             props = { 'device':'default' }
+        props.update(AUDIO_PROPS)
         self.device = props['device']
         name = props.get('name', 'alsasrc')
         src = Gst.ElementFactory.make (name, None)
@@ -408,6 +417,7 @@ class AlsaInput(BaseInput):
         q0 = Gst.ElementFactory.make ('queue2', None)
         q1 = Gst.ElementFactory.make ('queue2', None)
         q2 = Gst.ElementFactory.make ('queue2', None)
+        q3 = Gst.ElementFactory.make ('queue2', None)
         self.asink = q2
         tee = Gst.ElementFactory.make ('tee', None)
         volume = Gst.ElementFactory.make ('volume', None)
@@ -428,7 +438,7 @@ class AlsaInput(BaseInput):
         level.set_property ("message", True)
         self.level = level
 
-        for el in (src, q0, q1, q2, tee, volume, fasink, aconv, aconv2, ares, flt, level):
+        for el in (src, q0, q1, q2, q3, tee, volume, fasink, aconv, aconv2, ares, flt, level):
             self.add(el)
 
         if props:
@@ -439,7 +449,8 @@ class AlsaInput(BaseInput):
         q0.link (volume)
         volume.link (tee)
         tee.link (q1)
-        tee.link (aconv2)
+        tee.link (q3)
+        q3.link (aconv2)
         aconv2.link (ares)
         ares.link (q2)
         q1.link (aconv)
