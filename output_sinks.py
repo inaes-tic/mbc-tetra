@@ -360,16 +360,18 @@ class MuxedFileWriter(Gst.Bin):
                 # we are a sink, so the roles of pad and peer are reversed
                 # with respect to the same block in input_sources.py
                 peer.unlink(pad)
-                parent = peer.get_parent()
-
-                presence = None
-                tmpl = peer.get_pad_template()
-                if tmpl:
-                    presence = tmpl.presence
-                if parent and (presence == Gst.PadPresence.REQUEST):
-                    logging.debug('BEFORE PAD PARENT RELEASE PAD')
-                    parent.release_request_pad(peer)
-                    logging.debug('PAD PARENT RELEASE PAD OK')
+### In our case peer is a queue's src, so this path should not be taken.
+### Yet uncommenting it releases demons.
+###                parent = peer.get_parent()
+###
+###                presence = None
+###                tmpl = peer.get_pad_template()
+###                if tmpl:
+###                    presence = tmpl.presence
+###                if parent and (presence == Gst.PadPresence.REQUEST):
+###                    logging.debug('BEFORE PAD PARENT RELEASE PAD')
+###                    parent.release_request_pad(peer)
+###                    logging.debug('PAD PARENT RELEASE PAD OK')
         self.emit('stopped')
 
     def stop(self, *args):
