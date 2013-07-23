@@ -420,19 +420,18 @@ class TetraApp(GObject.GObject):
             except:
                 continue
 
+        for sink in self.outputs:
+            sink.initialize()
+            sink.set_state(Gst.State.PLAYING)
+
+        self.emit('source-disconnected', source, idx)
+        self.pipeline.set_state (Gst.State.PLAYING)
+        logging.debug('SOURCE REMOVED CB ENDED')
 
         if not self.inputs:
             self.pipeline.set_state(Gst.State.NULL)
-        else:
-            for sink in self.outputs:
-                sink.initialize()
-                sink.set_state(Gst.State.PLAYING)
-            self.pipeline.set_state (Gst.State.PLAYING)
-
-        self.emit('source-disconnected', source, idx)
 
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_source_removed')
-        logging.debug('SOURCE REMOVED CB ENDED')
 
 
     def bus_sync_message_cb (self, bus, msg):
