@@ -106,8 +106,7 @@ class TetraApp(GObject.GObject):
         self.live_sink = sink.preview_sink
         self.add_output_sink(sink)
 
-        sink = MP4Output()
-        #sink = FLVOutput()
+        sink = FLVOutput()
         self.add_output_sink(sink)
 
 
