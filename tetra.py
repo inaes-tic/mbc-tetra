@@ -68,7 +68,7 @@ class MainWindow(object):
         self.live_xid = live.get_property('window').get_xid()
         live.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
         live.connect('button-press-event', self.live_click_cb)
-        live.connect('draw', self.live_draw_cb)
+        #live.connect('draw', self.live_draw_cb)
 
         self.builder.get_object('automatico').connect('clicked', self.auto_click_cb)
 
@@ -90,7 +90,6 @@ class MainWindow(object):
             self.app.live_sink.set_property('sync', XV_SYNC)
             self.app.start()
             Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.CAPS_DETAILS , 'source_added_cb')
-            #source.set_state(Gst.State.PLAYING)
         # XXX: FIXME: we should wait till pulseaudio releases the card.
         # (or disable it)
         GLib.timeout_add(9*1000, _add_src)
@@ -138,7 +137,7 @@ class MainWindow(object):
             xvimagesink.set_property('sync', XV_SYNC)
             Gdk.threads_leave ()
 
-    def source_disconnected_cb (self, app, source, idx):
+    def source_disconnected_cb (self, app, source):
         if source in self.previews:
             preview = self.previews[source]
             self.preview_box.remove(preview)

@@ -30,7 +30,7 @@ class TetraApp(GObject.GObject):
        "master-level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
        "prepare-xwindow-id": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT, GObject.TYPE_PYOBJECT)),
        "prepare-window-handle": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT, GObject.TYPE_PYOBJECT)),
-       "source-disconnected": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_OBJECT,int)),
+       "source-disconnected": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_OBJECT]),
        "record-started": (GObject.SIGNAL_RUN_FIRST, None, []),
        "record-stopped": (GObject.SIGNAL_RUN_FIRST, None, []),
        "state-changed": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
@@ -65,8 +65,8 @@ class TetraApp(GObject.GObject):
 
         self.asink = Gst.ElementFactory.make ('tee', 'tetra main audio T')
 
-        self.audio_avg = []
-        self.audio_peak = []
+        self.audio_avg = {}
+        self.audio_peak = {}
 
         self.inputs = []
         self.outputs = []
@@ -126,8 +126,8 @@ class TetraApp(GObject.GObject):
 
     def add_input_source(self, source):
         source.connect('removed', self.source_removed_cb)
-        self.audio_avg.append (deque (maxlen=WINDOW_LENGTH * 10))
-        self.audio_peak.append (deque (maxlen=WINDOW_LENGTH * 10))
+        self.audio_avg[source] = deque (maxlen=WINDOW_LENGTH * 10)
+        self.audio_peak[source] = deque (maxlen=WINDOW_LENGTH * 10)
 
         self.pipeline.add(source)
         self.inputs.append(source)
@@ -200,6 +200,7 @@ class TetraApp(GObject.GObject):
             if pad in peers:
                 logging.info('SET ACTIVE INPUT BY SOURCE ok')
                 isel.set_property('active-pad', pad)
+                self.current_input = source
                 return
 
     def set_active_input(self, inputidx):
@@ -337,7 +338,7 @@ class TetraApp(GObject.GObject):
         bgnoise = 0
         lavg = len (self.audio_avg)
         if lavg != 0:
-            for q in self.audio_avg:
+            for source, q in self.audio_avg.items():
                 bgnoise += sum (q) / (10*WINDOW_LENGTH)
             bgnoise /= lavg
         else:
@@ -363,11 +364,18 @@ class TetraApp(GObject.GObject):
             if src == self.current_input:
                 return
             self.last_switch_time = now
-            self.set_active_input (src)
+            self.set_active_input_by_source (src)
             logging.debug('DO_SWITCH %s', src)
         def do_rotate():
             self.last_switch_time = now
-            self.set_active_input (self.current_input+1)
+            if not self.inputs:
+                return
+            try:
+                idx = self.inputs.index(self.current_input)
+            except ValueError:
+                idx = 0
+            src = self.inputs[(idx+1) % len(self.inputs)]
+            self.set_active_input_by_source (src)
             logging.debug('DO_ROTATE')
 
         if (now - self.last_switch_time) < self.min_on_air_time:
@@ -377,17 +385,17 @@ class TetraApp(GObject.GObject):
         avgs = []
         above = []
         silent = True
-        for idx,q in enumerate (self.audio_avg):
+        for source,q in self.audio_avg.items():
             if len(q) == 0:
-                logging.debug('empty level queue idx= %d', idx)
+                logging.debug('empty level queue source= %s', source)
                 return True
             avg = sum (q) / (10*WINDOW_LENGTH)
             dp = (q[-1] - q[0])
-            avgs.append ( (idx, avg) )
-            dpeaks.append ( (idx, dp) )
+            avgs.append ( (source, avg) )
+            dpeaks.append ( (source, dp) )
             if abs (avg-self.noise_baseline) > NOISE_THRESHOLD:
                 silent = False
-                above.append( (idx, avg) )
+                above.append( (source, avg) )
         if silent:
             logging.info('ALL INPUTS SILENT, ROTATING')
             do_rotate ()
@@ -397,7 +405,7 @@ class TetraApp(GObject.GObject):
             tavg = sum(x[1] for x in avgs)
             tavg /= len(above)
             ok = True
-            for idx, avg in avgs:
+            for source, avg in avgs:
                 if abs(avg-tavg) > self.speak_up_threshold:
                     ok = False
             if ok:
@@ -409,29 +417,32 @@ class TetraApp(GObject.GObject):
 # un muting a channel gives a 600 something peak (from minus infinity to the current level)
         peaks_over = filter (lambda x: (x[1] > self.speak_up_threshold) and (x[1] < 60), dpeaks)
         if peaks_over:
-            idx, peak = max (peaks_over, key= lambda x: x[1])
+            source, peak = max (peaks_over, key= lambda x: x[1])
             logging.debug('PEAKS OVER %s', peaks_over)
-            if abs(avgs[idx][1] - self.noise_baseline) > NOISE_THRESHOLD:
-                logging.info('NEW VOICE, SWITCHING TO %d', idx)
-                do_switch (idx)
+            # the result of filter() is [(source, avg)]
+            avg = filter(lambda x: (x[0] is source), avgs)[0][1]
+            if abs(avg - self.noise_baseline) > NOISE_THRESHOLD:
+                logging.info('NEW VOICE, SWITCHING TO %s', source)
+                do_switch (source)
                 return True
 
-        logging.info('SWITCHING TO THE LOUDEST %d', idx)
-        idx, avg = max (avgs, key= lambda x: x[1])
-        do_switch (idx)
+        logging.info('SWITCHING TO THE LOUDEST %s', source)
+        source, avg = max (avgs, key= lambda x: x[1])
+        do_switch (source)
 
 ###        print ' AVGs ', avgs , ' dPEAKs ', dpeaks
         return True
 
     def source_removed_cb (self, source):
-        idx = self._to_remove[source]
         logging.debug('SOURCE REMOVED CB %s', source)
         self.pipeline.remove(source)
-        self.audio_avg.pop(idx)
-        self.audio_peak.pop(idx)
-        self.preview_sinks.pop(idx)
+        self.audio_avg.pop(source)
+        self.audio_peak.pop(source)
 
-        for sink in self.preview_sinks:
+        for idx, sink in enumerate(self.preview_sinks):
+            if sink in source:
+                self.preview_sinks.pop(idx)
+                continue
             try:
                 sink.set_property('sync', XV_SYNC)
             except:
@@ -445,7 +456,7 @@ class TetraApp(GObject.GObject):
             self.__init_outputs()
             self.pipeline.set_state(Gst.State.PLAYING)
 
-        self.emit('source-disconnected', source, idx)
+        self.emit('source-disconnected', source)
         self._to_remove.pop(source)
 
         logging.debug('SOURCE BIN REMOVED OK')
@@ -474,13 +485,11 @@ class TetraApp(GObject.GObject):
                 rms = sum (arms) / len (arms)
                 peak = sum (apeak) / len (apeak)
                 if parent in self.inputs:
-                    idx = self.inputs.index(parent)
-                    self.audio_avg[idx].append (rms)
-                    self.audio_peak[idx].append (peak)
+                    self.audio_avg[parent].append (rms)
+                    self.audio_peak[parent].append (peak)
                     #logging.debug('LEVEL idx %d, avg %f peak %f', idx, rms, peak)
                     self.emit('level', parent, apeak)
                 elif parent in self.audio_inserts:
-                    idx = self.audio_inserts.index(parent)
                     self.emit('insert-level', parent, apeak)
                 elif msg.src is self.master_level:
                     self.emit('master-level', apeak)
