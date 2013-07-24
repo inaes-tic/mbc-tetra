@@ -244,6 +244,16 @@ class TetraApp(GObject.GObject):
         self._initialized = True
         self._last_state = [None, None, None]
 
+    def __init_inputs(self):
+        for src in self.inputs:
+            src.initialize()
+        for src in self.audio_inserts:
+            src.initialize()
+
+    def __init_outputs(self):
+        for sink in self.outputs:
+            sink.initialize()
+
     def start(self):
         if not self._initialized:
             self.__initialize()
@@ -264,7 +274,6 @@ class TetraApp(GObject.GObject):
             for src in self.audio_inserts:
                 src.initialize()
                 src.set_state (Gst.State.PLAYING)
-
 
         for sink in self.outputs:
             sink.initialize()
@@ -415,40 +424,32 @@ class TetraApp(GObject.GObject):
         return True
 
     def source_removed_cb (self, source):
-        try:
-            idx = self.inputs.index(source)
-        except ValueError:
-            return True
+        idx = self._to_remove[source]
         logging.debug('SOURCE REMOVED CB %s', source)
         self.pipeline.remove(source)
         self.audio_avg.pop(idx)
         self.audio_peak.pop(idx)
         self.preview_sinks.pop(idx)
-        self.inputs.pop(idx)
-        logging.debug('SOURCE BIN REMOVED OK')
+
         for sink in self.preview_sinks:
             try:
                 sink.set_property('sync', XV_SYNC)
             except:
                 continue
 
-        for sink in self.outputs:
-            sink.initialize()
-            sink.set_state(Gst.State.PLAYING)
-
-        self.emit('source-disconnected', source, idx)
-        self.pipeline.set_state (Gst.State.PLAYING)
-        logging.debug('SOURCE REMOVED CB ENDED')
-
         if not self.inputs:
             self.pipeline.set_state(Gst.State.NULL)
         else:
-            for inp in self.inputs:
-                sink.initialize()
-                sink.set_state(Gst.State.PLAYING)
+            self.pipeline.set_state(Gst.State.READY)
+            self.__init_inputs()
+            self.__init_outputs()
+            self.pipeline.set_state(Gst.State.PLAYING)
 
+        self.emit('source-disconnected', source, idx)
+        self._to_remove.pop(source)
+
+        logging.debug('SOURCE BIN REMOVED OK')
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_source_removed')
-
 
     def bus_sync_message_cb (self, bus, msg):
         if msg.get_structure() is None:
