@@ -42,6 +42,7 @@ class TetraApp(GObject.GObject):
         self._initialized = False
         self._rec_ok_cnt = 0
         self._about_to_record = False
+        self._recording = False
         self._to_remove = {}
 
         self.noise_baseline = DEFAULT_NOISE_BASELINE
@@ -291,6 +292,7 @@ class TetraApp(GObject.GObject):
             self._rec_ok_cnt -= 1
         if self._rec_ok_cnt == 0:
             self.pipeline.set_state(Gst.State.PLAYING)
+            self._recording = True
             self.emit('record-started')
 
     def __start_file_recording(self):
@@ -317,6 +319,10 @@ class TetraApp(GObject.GObject):
                     self.__start_file_recording()
                     self._about_to_record = False
                 else:
+                    if self._recording and self.pipeline.get_state(0)[1] == Gst.State.PLAYING:
+                        self.pipeline.set_state (Gst.State.READY)
+                        self.pipeline.set_state (Gst.State.PLAYING)
+                        self._recording = False
                     self.emit('record-stopped')
 
     def start_file_recording(self):
