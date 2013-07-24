@@ -42,6 +42,7 @@ class TetraApp(GObject.GObject):
         self._initialized = False
         self._rec_ok_cnt = 0
         self._about_to_record = False
+        self._to_remove = {}
 
         self.noise_baseline = DEFAULT_NOISE_BASELINE
         self.speak_up_threshold = SPEAK_UP_THRESHOLD
@@ -485,18 +486,26 @@ class TetraApp(GObject.GObject):
         return True
 
     def bus_message_cb (self, bus, msg, arg=None):
+        def log_error():
+            logging.error('Gst msg ERORR src: %s msg: %s', msg.src, msg.parse_error())
+            logging.debug('Gst msg ERROR CURRENT STATE %s', self.pipeline.get_state(0))
+
         if msg.type == Gst.MessageType.CLOCK_LOST:
             self.pipeline.set_state (Gst.State.PAUSED)
             self.pipeline.set_state (Gst.State.PLAYING)
         elif msg.type == Gst.MessageType.ERROR:
-            logging.error('Gst msg ERORR src: %s msg: %s', msg.src, msg.parse_error())
-            logging.debug('Gst msg ERROR CURRENT STATE %s', self.pipeline.get_state(0))
             parent = msg.src.get_parent()
             if parent in self.inputs:
-                idx = self.inputs.index(msg.src.get_parent())
-                # input-selector doesn't quite like when you remove/unlink the active pad.
-                self.set_active_input(idx+1)
+                idx = self.inputs.index(parent)
+                self.inputs.pop(idx)
+                self._to_remove[parent] = idx
+                if self.inputs:
+                    # input-selector doesn't quite like when you remove/unlink the active pad.
+                    self.set_active_input_by_source(self.inputs[0])
                 parent.disconnect_source()
+                log_error()
+            if parent not in self._to_remove:
+                log_error()
 
         return True
 
