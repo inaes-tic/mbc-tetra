@@ -187,11 +187,19 @@ class TetraApp(GObject.GObject):
         self._automatic = auto
 
     def set_active_input_by_source(self, source):
-        try:
-            idx = self.inputs.index(source)
-            self.set_active_input(idx)
-        except IndexError:
-            pass
+        peers = [pad.get_peer() for pad in source.pads]
+
+        isel = self.inputsel
+        oldpad = isel.get_property ('active-pad')
+
+        if oldpad is None or (oldpad in peers):
+            return
+
+        for pad in isel.sinkpads:
+            if pad in peers:
+                logging.info('SET ACTIVE INPUT BY SOURCE ok')
+                isel.set_property('active-pad', pad)
+                return
 
     def set_active_input(self, inputidx):
         isel = self.inputsel
