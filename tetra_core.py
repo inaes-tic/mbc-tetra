@@ -194,7 +194,7 @@ class TetraApp(GObject.GObject):
         isel = self.inputsel
         oldpad = isel.get_property ('active-pad')
 
-        if oldpad is None or (oldpad in peers):
+        if oldpad in peers:
             return
 
         for pad in isel.sinkpads:
