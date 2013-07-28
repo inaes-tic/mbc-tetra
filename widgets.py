@@ -195,6 +195,55 @@ class PreviewWidget(Gtk.Box):
             self.xid = window.get_xid()
         return True
 
+class MasterMonitor(Gtk.Box):
+    __gsignals__ = {
+       "mute": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+       "volume": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+    }
+    def __init__(self):
+        Gtk.Box.__init__(self)
+        builder = Gtk.Builder ()
+        self.builder = builder
+
+        builder.add_objects_from_file (config.get('mastermonitor_ui','master_monitor.ui'), ['MasterMonitor'])
+        monitor = builder.get_object('MasterMonitor')
+        self.add(monitor)
+
+        slider = builder.get_object ('volume')
+        slider.connect ("value-changed", self.__slider_cb)
+
+        bars = []
+        bar_l = builder.get_object ('peak_L')
+        if bar_l:
+            bars.append(bar_l)
+        bar_r = builder.get_object ('peak_R')
+        if bar_r:
+            bars.append(bar_r)
+
+        self.bars = bars
+
+        mute = builder.get_object ('mute')
+        mute.connect ("toggled", self.__mute_cb)
+
+    def set_levels (self, peaks):
+        Gdk.threads_enter ()
+        for bar,peak in zip(self.bars, peaks):
+            frac = 1.0 - peak/MIN_PEAK
+            if frac < 0:
+                frac = 0
+            elif frac > 1:
+                frac = 1
+            bar.set_fraction (frac)
+        Gdk.threads_leave ()
+        return True
+
+    def __mute_cb(self, widget, *data):
+        mute = widget.get_active()
+        self.emit('mute', mute)
+
+    def __slider_cb(self, widget, value, *data):
+        self.emit('volume', value)
+
 
 if __name__ == '__main__':
     Gtk.init(sys.argv)
