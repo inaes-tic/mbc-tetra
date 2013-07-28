@@ -149,9 +149,18 @@ class MainWindow(object):
             self.previews[source].set_levels(peaks)
 
 
-def load_theme(theme):
-    provider = Gtk.CssProvider.get_default()
-    provider.load_from_path(theme)
+def load_theme(theme_name):
+    dark = config.get('use_dark_theme', False)
+    provider = None
+    if dark:
+        provider = Gtk.CssProvider.get_named(theme_name, 'dark') or Gtk.CssProvider.get_named(theme_name, None)
+    else:
+        provider = Gtk.CssProvider.get_named(theme_name, None)
+
+    if provider is None:
+        logging.error('Cannot load theme: %s', theme_name)
+        return
+
     screen = Gdk.Screen.get_default()
     context = Gtk.StyleContext()
     context.add_provider_for_screen(screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
@@ -160,13 +169,10 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.DEBUG)
 
-    dark = config.get('use_dark_theme', False)
-    if dark:
-        Gtk.Settings.get_default().set_property('gtk-application-prefer-dark-theme', True)
 
     theme = config.get('theme', None)
     if theme:
-        load_theme('theme-tetra-ambiance/gtk.css')
+        load_theme(theme)
 
     app = TetraApp()
 
