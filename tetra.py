@@ -27,7 +27,7 @@ import config
 from common import *
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
-from widgets import SoundMixWidget, PreviewWidget
+from widgets import SoundMixWidget, PreviewWidget, MasterMonitor
 import input_sources
 
 class MainWindow(object):
@@ -43,6 +43,7 @@ class MainWindow(object):
         self.window.fullscreen ()
 
         self.preview_box = self.builder.get_object('PreviewBox')
+        self.main_box = self.builder.get_object('MainBox')
         self.controls = self.builder.get_object('controls')
         self.options_box = self.builder.get_object('OptionsBox')
 
@@ -51,6 +52,9 @@ class MainWindow(object):
         self.sound_mix.connect('set-mix-device', self.insert_sel_cb)
         self.sound_mix.connect('set-mix-source', self.insert_sel_cb)
         self.insert_sel_cb(self.sound_mix, None)
+
+        self.master_monitor = MasterMonitor()
+        self.main_box.add(self.master_monitor)
 
         self.sliders = []
         self.bars = []
@@ -75,6 +79,7 @@ class MainWindow(object):
         app.live_sink.set_window_handle(live.get_property('window').get_xid())
 
         app.connect('level', self.update_levels)
+        app.connect('master-level', self.update_master_level)
         app.connect('source-disconnected', self.source_disconnected_cb)
         app.connect('prepare-window-handle', self.prepare_window_handle_cb)
         self.imon.connect('added', self.source_added_cb)
@@ -143,6 +148,9 @@ class MainWindow(object):
             self.preview_box.remove(preview)
             preview.destroy()
         return True
+
+    def update_master_level (self, app, peaks):
+        self.master_monitor.set_levels(peaks)
 
     def update_levels (self, app, source, peaks):
         if source in self.previews:
