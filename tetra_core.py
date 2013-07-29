@@ -336,6 +336,8 @@ class TetraApp(GObject.GObject):
 
 
     def stop_file_recording(self):
+        if not self._recording:
+            return
         self._rec_stop_cnt = len(self.outputs)
         for out in self.outputs:
             out.stop_file_recording()
