@@ -142,6 +142,7 @@ class TetraApp(GObject.GObject):
 
         source.initialize()
         source.set_state(self.pipeline.get_state(0)[1])
+        GLib.idle_add(self._set_xvsync)
 
     def add_audio_insert(self, source):
         self.pipeline.add(source)
@@ -263,7 +264,6 @@ class TetraApp(GObject.GObject):
         if not self.inputs:
             return False
 
-        self.live_sink.expose()
         # if started with no cameras connected we need to set the state
         # of every input manually. (we call start() again when new devices are
         # added to sync everything)
@@ -282,6 +282,7 @@ class TetraApp(GObject.GObject):
             sink.set_state (Gst.State.PLAYING)
 
         ret = self.pipeline.set_state (Gst.State.PLAYING)
+        GLib.idle_add(self._set_xvsync)
 
         logging.debug('STARTING ret= %s', ret)
         GLib.timeout_add(int (2 * WINDOW_LENGTH * 1000), self.calibrate_bg_noise)
@@ -441,6 +442,14 @@ class TetraApp(GObject.GObject):
 ###        print ' AVGs ', avgs , ' dPEAKs ', dpeaks
         return True
 
+    def _set_xvsync(self, *args):
+        for sink in self.preview_sinks:
+            try:
+                sink.set_property('sync', XV_SYNC)
+                sink.expose()
+            except:
+                continue
+
     def source_removed_cb (self, source):
         logging.debug('SOURCE REMOVED CB %s', source)
         self.pipeline.remove(source)
@@ -450,11 +459,9 @@ class TetraApp(GObject.GObject):
         for idx, sink in enumerate(self.preview_sinks):
             if sink in source:
                 self.preview_sinks.pop(idx)
-                continue
-            try:
-                sink.set_property('sync', XV_SYNC)
-            except:
-                continue
+                break
+
+        self._to_remove.pop(source)
 
         if not self.inputs:
             self.pipeline.set_state(Gst.State.NULL)
@@ -462,10 +469,11 @@ class TetraApp(GObject.GObject):
             self.pipeline.set_state(Gst.State.READY)
             self.__init_inputs()
             self.__init_outputs()
+
             self.pipeline.set_state(Gst.State.PLAYING)
+            GLib.idle_add(self._set_xvsync)
 
         self.emit('source-disconnected', source)
-        self._to_remove.pop(source)
 
         logging.debug('SOURCE BIN REMOVED OK')
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_source_removed')
