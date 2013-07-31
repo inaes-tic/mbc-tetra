@@ -176,14 +176,14 @@ class C920Input(BaseInput):
         dec = Gst.ElementFactory.make ('jpegdec', None)
         q1 = Gst.ElementFactory.make ('queue2', None)
         q2 = Gst.ElementFactory.make ('queue2', None)
+        vconv = Gst.ElementFactory.make ('videoconvert', None)
         sink = Gst.ElementFactory.make ('xvimagesink', None)
         sink.set_property('sync', XV_SYNC)
 
         self.xvsink = sink
-        self.vsink = q1
         self.vsrc = src
 
-        for el in (src, sink, q0, q1, q2, tee, parse, dec):
+        for el in (src, sink, q0, q1, q2, tee, parse, dec, vconv):
             self.add(el)
 
         if props:
@@ -199,6 +199,8 @@ class C920Input(BaseInput):
         tee.link(q1)
         tee.link(q2)
         q2.link(sink)
+        q1.link(vconv)
+        self.vsink = vconv # antes q1
 
 
     def __add_audio_source (self, props):

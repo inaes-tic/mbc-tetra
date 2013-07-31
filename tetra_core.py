@@ -53,14 +53,15 @@ class TetraApp(GObject.GObject):
 
         self.pipeline = pipeline = Gst.Pipeline.new ('pipeline')
 
-        self.inputsel = Gst.ElementFactory.make ('input-selector', None)
+        self.inputsel = Gst.ElementFactory.make ('videomixer', None)
+
         self.pipeline.add (self.inputsel)
         #self.vsink = Gst.ElementFactory.make ('fakesink', None)
         q = Gst.ElementFactory.make ('queue2', None)
         self.vsink = Gst.ElementFactory.make ('tee', 'tetra main video T')
         self.pipeline.add (q)
         self.pipeline.add (self.vsink)
-        self.inputsel.link(q)
+        self.inputsel.link_filtered(q, VIDEO_CAPS_SIZE)
         q.link(self.vsink)
         self.preview_sinks = []
 
@@ -193,17 +194,24 @@ class TetraApp(GObject.GObject):
         peers = [pad.get_peer() for pad in source.pads]
 
         isel = self.inputsel
-        oldpad = isel.get_property ('active-pad')
 
-        if oldpad in peers:
-            return
-
+        current_pad = None
+        old_pads = []
         for pad in isel.sinkpads:
             if pad in peers:
-                logging.info('SET ACTIVE INPUT BY SOURCE ok')
-                isel.set_property('active-pad', pad)
-                self.current_input = source
-                return
+                current_pad = pad
+                pad.set_property('zorder', 1)
+            else:
+                old_pads.append(pad)
+        if current_pad:
+            current_pad.set_property('alpha', 1)
+            for pad in old_pads:
+                pad.set_property('alpha', 0)
+                pad.set_property('zorder', 2)
+            self.current_input = source
+            logging.info('SET ACTIVE INPUT BY SOURCE ok')
+
+
 
     def set_active_input(self, inputidx):
         isel = self.inputsel
