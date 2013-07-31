@@ -254,6 +254,7 @@ class TetraApp(GObject.GObject):
 
         self._initialized = True
         self._last_state = [None, None, None]
+        ret = self.pipeline.set_state (Gst.State.READY)
 
     def __init_inputs(self):
         for src in self.inputs:
@@ -266,8 +267,10 @@ class TetraApp(GObject.GObject):
             sink.initialize()
 
     def start(self):
+        firsttime=False
         if not self._initialized:
             self.__initialize()
+            firsttime=True
 
         if not self.inputs:
             return False
@@ -288,6 +291,15 @@ class TetraApp(GObject.GObject):
         for sink in self.outputs:
             sink.initialize()
             sink.set_state (Gst.State.PLAYING)
+
+        if firsttime:
+            def f():
+                ret = self.pipeline.set_state (Gst.State.PLAYING)
+                GLib.idle_add(self._set_xvsync)
+                logging.debug('STARTING ret= %s', ret)
+            self.pipeline.set_state (Gst.State.READY)
+            GLib.idle_add(f)
+            return
 
         ret = self.pipeline.set_state (Gst.State.PLAYING)
         GLib.idle_add(self._set_xvsync)
@@ -472,7 +484,8 @@ class TetraApp(GObject.GObject):
         self._to_remove.pop(source)
 
         if not self.inputs:
-            self.pipeline.set_state(Gst.State.NULL)
+            #self.pipeline.set_state(Gst.State.NULL)
+            GLib.idle_add(self.pipeline.set_state, Gst.State.NULL)
         else:
             self.pipeline.set_state(Gst.State.READY)
             self.__init_inputs()
