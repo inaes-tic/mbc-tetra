@@ -13,6 +13,7 @@ gi.require_version('Gst', '1.0')
 from gi.repository import GObject
 from gi.repository import Gst
 from gi.repository import GstVideo
+from gi.repository import GstController
 from gi.repository import GLib
 
 GObject.threads_init()
@@ -37,7 +38,7 @@ class TetraApp(GObject.GObject):
     }
     def __init__(self):
         GObject.GObject.__init__(self)
-        self.current_input = INPUT_COUNT - 1
+        self.current_input = None
         self._automatic = True
         self._initialized = False
         self._rec_ok_cnt = 0
@@ -54,6 +55,7 @@ class TetraApp(GObject.GObject):
         self.pipeline = pipeline = Gst.Pipeline.new ('pipeline')
 
         self.inputsel = Gst.ElementFactory.make ('videomixer', None)
+        self.inputsel.set_property('background', 'black')
 
         self.pipeline.add (self.inputsel)
         #self.vsink = Gst.ElementFactory.make ('fakesink', None)
@@ -191,27 +193,61 @@ class TetraApp(GObject.GObject):
         self._automatic = auto
 
     def set_active_input_by_source(self, source):
-        peers = [pad.get_peer() for pad in source.pads]
+        def _get_control_source(elem, prop='alpha'):
+            ctrl = elem.get_control_binding(prop)
+            if ctrl:
+                return ctrl.get_property('control_source')
+            cs = GstController.InterpolationControlSource()
+            cs.set_property('mode', GstController.InterpolationMode.LINEAR)
+            cb = GstController.DirectControlBinding.new(elem, prop, cs)
+            elem.add_control_binding(cb)
+            return cs
+
+        if source == self.current_input:
+            return
 
         isel = self.inputsel
-
-        current_pad = None
         old_pads = []
+        current_pad = None
+        previous_pad = None
+
+        if self.current_input:
+            peers = [pad.get_peer() for pad in self.current_input.pads]
+            for pad in isel.sinkpads:
+                if pad in peers:
+                    previous_pad = pad
+                    break
+
+        peers = [pad.get_peer() for pad in source.pads]
         for pad in isel.sinkpads:
             if pad in peers:
                 current_pad = pad
                 pad.set_property('zorder', 1)
             else:
                 old_pads.append(pad)
+                if pad is not previous_pad:
+                    pad.set_property('zorder', 3)
         if current_pad:
-            current_pad.set_property('alpha', 1)
-            for pad in old_pads:
-                pad.set_property('alpha', 0)
-                pad.set_property('zorder', 2)
+            if previous_pad is None:
+                current_pad.set_property('alpha', 1)
+                for pad in old_pads:
+                    pad.set_property('alpha', 0)
+                    pad.set_property('zorder', 2)
+            else:
+                now = self.pipeline.get_clock().get_time() # XXX: you better check for errors
+                end = now + 0.5*Gst.SECOND
+
+                current_alpha = _get_control_source(current_pad)
+                previous_alpha = _get_control_source(previous_pad)
+
+                previous_pad.set_property('zorder', 2)
+                current_alpha.set(now, 0)
+                previous_alpha.set(now, 1)
+                current_alpha.set(end, 1)
+                previous_alpha.set(end, 0)
+
             self.current_input = source
             logging.info('SET ACTIVE INPUT BY SOURCE ok')
-
-
 
     def set_active_input(self, inputidx):
         isel = self.inputsel
