@@ -499,6 +499,12 @@ class TetraApp(GObject.GObject):
         return True
 
     def _set_xvsync(self, *args):
+        try:
+            self.live_sink.set_property('sync', XV_SYNC)
+            self.live_sink.expose()
+        except:
+            pass
+
         for sink in self.preview_sinks:
             try:
                 sink.set_property('sync', XV_SYNC)
