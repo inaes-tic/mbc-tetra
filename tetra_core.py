@@ -593,10 +593,13 @@ class TetraApp(GObject.GObject):
         return True
 
     def bus_state_changed_cb (self, bus, msg, arg=None):
+        if msg.src != self.pipeline:
+            return True
         prev, new, pending = msg.parse_state_changed()
         curr_state = [prev, new, pending]
         if new != self._last_state[1]:
             self.emit('state-changed', prev, new, pending)
+        logging.debug('STATE CHANGE: %s', curr_state)
         self._last_state = curr_state
 
         return True
