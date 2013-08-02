@@ -55,16 +55,19 @@ class TetraApp(GObject.GObject):
         self.pipeline = pipeline = Gst.Pipeline.new ('pipeline')
 
         self.inputsel = Gst.ElementFactory.make ('videomixer', None)
+        self.vconvert = Gst.ElementFactory.make ('videoconvert', None)
         self.inputsel.set_property('background', 'black')
 
         self.pipeline.add (self.inputsel)
+        self.pipeline.add (self.vconvert)
         #self.vsink = Gst.ElementFactory.make ('fakesink', None)
         q = Gst.ElementFactory.make ('queue2', None)
         self.vsink = Gst.ElementFactory.make ('tee', 'tetra main video T')
         self.pipeline.add (q)
         self.pipeline.add (self.vsink)
         self.inputsel.link_filtered(q, VIDEO_CAPS_SIZE)
-        q.link(self.vsink)
+        q.link(self.vconvert)
+        self.vconvert.link(self.vsink)
         self.preview_sinks = []
 
         self.asink = Gst.ElementFactory.make ('tee', 'tetra main audio T')
@@ -72,6 +75,7 @@ class TetraApp(GObject.GObject):
         self.audio_avg = {}
         self.audio_peak = {}
 
+        self.backgrounds = []
         self.inputs = []
         self.outputs = []
         self.audio_inserts = []
@@ -145,6 +149,27 @@ class TetraApp(GObject.GObject):
 
         source.initialize()
         source.set_state(self.pipeline.get_state(0)[1])
+        GLib.idle_add(self._set_xvsync)
+
+    def add_background_source(self, source, xpos=0, ypos=0):
+        source.connect('removed', self.source_removed_cb)
+
+        self.pipeline.add(source)
+        self.backgrounds.append(source)
+
+        source.link(self.amixer)
+        source.link(self.inputsel)
+
+        self.preview_sinks.append(source.xvsink)
+
+        source.initialize()
+        source.set_state(self.pipeline.get_state(0)[1])
+        self.set_active_input_by_source(source)
+
+        peer = source.vgpad.get_peer()
+        if peer:
+            peer.set_property('xpos', xpos)
+            peer.set_property('ypos', ypos)
         GLib.idle_add(self._set_xvsync)
 
     def add_audio_insert(self, source):
@@ -308,8 +333,8 @@ class TetraApp(GObject.GObject):
             self.__initialize()
             firsttime=True
 
-        if not self.inputs:
-            return False
+    ##    if not self.inputs:
+    ##        return False
 
         # if started with no cameras connected we need to set the state
         # of every input manually. (we call start() again when new devices are
@@ -526,8 +551,13 @@ class TetraApp(GObject.GObject):
         self._to_remove.pop(source)
 
         if not self.inputs:
+            if self.backgrounds:
+                source = self.backgrounds[0]
+                self.set_active_input_by_source(source)
+            else:
+                GLib.idle_add(self.pipeline.set_state, Gst.State.NULL)
             #self.pipeline.set_state(Gst.State.NULL)
-            GLib.idle_add(self.pipeline.set_state, Gst.State.NULL)
+            #GLib.idle_add(self.pipeline.set_state, Gst.State.NULL)
         else:
             self.pipeline.set_state(Gst.State.READY)
             self.__init_inputs()
