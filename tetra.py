@@ -85,6 +85,9 @@ class MainWindow(object):
         self.imon.connect('added', self.source_added_cb)
         self.imon.start()
 
+        source = input_sources.ImageSource(width=640, height=480, location='/home/pardo/Pictures/gramophone-petal2.png')
+        self.app.add_background_source(source)
+
     def source_added_cb(self, imon, src, props):
         source = src(**props)
         preview = self.add_source()
