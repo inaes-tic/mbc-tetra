@@ -87,16 +87,20 @@ class VideoMixerTransition(BaseTransition):
             else:
                 old_pads.append(pad)
                 if pad is not previous_pad:
-                    cs = self._get_control_source(pad)
-                    cs.unset_all()
-                    pad.set_property('zorder', 3)
                     pad.set_property('alpha', 0)
+                    pad.set_property('zorder', 3)
+                    for prop in ['alpha', 'xpos', 'ypos']:
+                        cs = self._get_control_source(pad, prop)
+                        cs.unset_all()
         if current_pad:
             if previous_pad is None:
                 current_pad.set_property('alpha', 1)
+                current_pad.set_property('zorder', 2)
+                logging.debug('VideoMixerTransition: previous_pad is None')
             elif previous_pad is current_pad:
-                    current_pad.set_property('alpha', 1)
-                    current_pad.set_property('zorder', 2)
+                current_pad.set_property('alpha', 1)
+                current_pad.set_property('zorder', 2)
+                logging.debug('VideoMixerTransition: previous_pad is current_pad')
             else:
                 if transition:
                     self.transitions.get(transition, self.alpha_blend)(previous_pad, current_pad)
@@ -104,7 +108,7 @@ class VideoMixerTransition(BaseTransition):
                     self.fast_switch(previous_pad, current_pad)
 
             self.current_input = source
-            logging.info('VideoMixerTransition: set active input by source ok')
+            logging.info('VideoMixerTransition: set active input by source ok using %s', transition)
             return source
 
     def _get_control_source(self, elem, prop='alpha'):
@@ -138,4 +142,5 @@ class VideoMixerTransition(BaseTransition):
         old_pad.set_property('zorder', 3)
         new_pad.set_property('alpha', 1)
         new_pad.set_property('zorder', 2)
+        logging.debug('VideoMixerTransition: do fast_switch')
 
