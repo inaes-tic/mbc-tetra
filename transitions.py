@@ -61,6 +61,8 @@ class VideoMixerTransition(BaseTransition):
             False: self.fast_switch,
             'fast': self.fast_switch,
             'blend': self.alpha_blend,
+            'slide_lr': self.slide_lr,
+            'slide_rl': self.slide_rl,
         }
 
     def set_active_input_by_source(self, source, transition=True, duration=0.25):
@@ -143,4 +145,52 @@ class VideoMixerTransition(BaseTransition):
         new_pad.set_property('alpha', 1)
         new_pad.set_property('zorder', 2)
         logging.debug('VideoMixerTransition: do fast_switch')
+
+    def horiz_slide(self, old_pad, new_pad, direction="LR", duration=0.25):
+        if direction not in ["LR", "RL"]:
+            direction = "LR"
+
+        now = self.mixer.get_clock().get_time() # XXX: you better check for errors
+        end = now + duration*Gst.SECOND
+
+        if direction == "LR":
+            new_startx = -(VIDEO_WIDTH+1)
+            old_endx = (VIDEO_WIDTH+1)
+        else:
+            new_startx = (VIDEO_WIDTH+1)
+            old_endx = -(VIDEO_WIDTH+1)
+
+        # scaling introduced by our modifications to gstvideomixer2.c
+        new_startx = 0.5 + (1.0*new_startx) / (8*1920)
+        old_endx = 0.5 + (1.0*old_endx) / (8*1920)
+        defaultx = 0.5
+
+        new_xcs = self._get_control_source(new_pad, "xpos")
+        old_xcs = self._get_control_source(old_pad, "xpos")
+
+        new_xcs.unset_all()
+        old_xcs.unset_all()
+        self._get_control_source(new_pad, "alpha").unset_all()
+        self._get_control_source(old_pad, "alpha").unset_all()
+
+        old_pad.set_property('xpos', 0)
+        old_pad.set_property('zorder', 1)
+        old_pad.set_property('alpha', 1)
+
+        new_pad.set_property('alpha', 0)
+        new_pad.set_property('zorder', 2)
+
+        old_xcs.set(now, defaultx)
+        new_xcs.set(now, new_startx)
+
+        old_xcs.set(end, old_endx)
+        new_xcs.set(end, defaultx)
+
+        new_pad.set_property('alpha', 1)
+
+    def slide_lr(self, old_pad, new_pad, direction="LR", duration=0.25):
+        return self.horiz_slide(old_pad, new_pad, direction, duration)
+
+    def slide_rl(self, old_pad, new_pad, direction="RL", duration=0.25):
+        return self.horiz_slide(old_pad, new_pad, direction, duration)
 
