@@ -21,6 +21,7 @@ Gst.init(sys.argv)
 
 from common import *
 from output_sinks import AutoOutput, MP4Output, FLVOutput
+from transitions import VideoMixerTransition, InputSelectorTransition
 
 
 
@@ -54,9 +55,9 @@ class TetraApp(GObject.GObject):
 
         self.pipeline = pipeline = Gst.Pipeline.new ('pipeline')
 
-        self.inputsel = Gst.ElementFactory.make ('videomixer', None)
+        self.mixer = VideoMixerTransition()
+        self.inputsel = self.mixer.mixer
         self.vconvert = Gst.ElementFactory.make ('videoconvert', None)
-        self.inputsel.set_property('background', 'black')
 
         self.pipeline.add (self.inputsel)
         self.pipeline.add (self.vconvert)
@@ -148,7 +149,9 @@ class TetraApp(GObject.GObject):
         self.levels.append(source.level)
 
         source.initialize()
+        self.current_source = source
         source.set_state(self.pipeline.get_state(0)[1])
+        #self.set_active_input_by_source(source, transition=False)
         GLib.idle_add(self._set_xvsync)
 
     def add_background_source(self, source, xpos=0, ypos=0):
@@ -164,12 +167,8 @@ class TetraApp(GObject.GObject):
 
         source.initialize()
         source.set_state(self.pipeline.get_state(0)[1])
-        self.set_active_input_by_source(source)
+        self.set_active_input_by_source(source, transition=False)
 
-        peer = source.vgpad.get_peer()
-        if peer:
-            peer.set_property('xpos', xpos)
-            peer.set_property('ypos', ypos)
         GLib.idle_add(self._set_xvsync)
 
     def add_audio_insert(self, source):
@@ -217,62 +216,8 @@ class TetraApp(GObject.GObject):
     def set_automatic(self, auto=True):
         self._automatic = auto
 
-    def set_active_input_by_source(self, source):
-        def _get_control_source(elem, prop='alpha'):
-            ctrl = elem.get_control_binding(prop)
-            if ctrl:
-                return ctrl.get_property('control_source')
-            cs = GstController.InterpolationControlSource()
-            cs.set_property('mode', GstController.InterpolationMode.LINEAR)
-            cb = GstController.DirectControlBinding.new(elem, prop, cs)
-            elem.add_control_binding(cb)
-            return cs
-
-        if source == self.current_input:
-            return
-
-        isel = self.inputsel
-        old_pads = []
-        current_pad = None
-        previous_pad = None
-
-        if self.current_input:
-            peers = [pad.get_peer() for pad in self.current_input.pads]
-            for pad in isel.sinkpads:
-                if pad in peers:
-                    previous_pad = pad
-                    break
-
-        peers = [pad.get_peer() for pad in source.pads]
-        for pad in isel.sinkpads:
-            if pad in peers:
-                current_pad = pad
-                pad.set_property('zorder', 1)
-            else:
-                old_pads.append(pad)
-                if pad is not previous_pad:
-                    pad.set_property('zorder', 3)
-        if current_pad:
-            if previous_pad is None:
-                current_pad.set_property('alpha', 1)
-                for pad in old_pads:
-                    pad.set_property('alpha', 0)
-                    pad.set_property('zorder', 2)
-            else:
-                now = self.pipeline.get_clock().get_time() # XXX: you better check for errors
-                end = now + 0.5*Gst.SECOND
-
-                current_alpha = _get_control_source(current_pad)
-                previous_alpha = _get_control_source(previous_pad)
-
-                previous_pad.set_property('zorder', 2)
-                current_alpha.set(now, 0)
-                previous_alpha.set(now, 1)
-                current_alpha.set(end, 1)
-                previous_alpha.set(end, 0)
-
-            self.current_input = source
-            logging.info('SET ACTIVE INPUT BY SOURCE ok')
+    def set_active_input_by_source(self, source, *args, **kwargs):
+        self.current_input = self.mixer.set_active_input_by_source(source, *args, **kwargs)
 
     def set_active_input(self, inputidx):
         isel = self.inputsel
@@ -621,7 +566,7 @@ class TetraApp(GObject.GObject):
                 self._to_remove[parent] = idx
                 if self.inputs:
                     # input-selector doesn't quite like when you remove/unlink the active pad.
-                    self.set_active_input_by_source(self.inputs[0], transition=None)
+                    self.set_active_input_by_source(self.inputs[0], transition=False)
                 else:
                     if self.backgrounds:
                         source = self.backgrounds[0]
