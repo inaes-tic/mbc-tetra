@@ -125,6 +125,9 @@ class BaseInput(Gst.Bin):
         if ok:
             logging.debug('PAD BLOCK ADD IDLE')
             GLib.timeout_add(0, self.__unlink_and_set_to_null)
+            return False
+        else:
+            return True
 
 class C920Input(BaseInput):
     def __init__(self, video_props, audio_props, name=None):

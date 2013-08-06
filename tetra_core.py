@@ -359,7 +359,7 @@ class TetraApp(GObject.GObject):
                 GLib.idle_add(self._set_xvsync)
                 logging.debug('STARTING ret= %s', ret)
             self.pipeline.set_state (Gst.State.READY)
-            GLib.idle_add(f)
+            GLib.timeout_add(100, f)
             return
 
         ret = self.pipeline.set_state (Gst.State.PLAYING)
@@ -539,25 +539,26 @@ class TetraApp(GObject.GObject):
 
     def source_removed_cb (self, source):
         logging.debug('SOURCE REMOVED CB %s', source)
-        self.pipeline.remove(source)
-        self.audio_avg.pop(source)
-        self.audio_peak.pop(source)
+        if source in self.pipeline.children:
+            self.pipeline.remove(source)
+        for coll in [self._to_remove, self.audio_avg, self.audio_peak]:
+            try:
+                coll.pop(source)
+            except KeyError:
+                pass
 
         for idx, sink in enumerate(self.preview_sinks):
             if sink in source:
                 self.preview_sinks.pop(idx)
                 break
 
-        self._to_remove.pop(source)
 
         if not self.inputs:
-            if self.backgrounds:
-                source = self.backgrounds[0]
-                self.set_active_input_by_source(source)
-            else:
-                GLib.idle_add(self.pipeline.set_state, Gst.State.NULL)
-            #self.pipeline.set_state(Gst.State.NULL)
-            #GLib.idle_add(self.pipeline.set_state, Gst.State.NULL)
+            if not self.backgrounds:
+                def go_to_null():
+                    self.pipeline.set_state(Gst.State.NULL)
+                    return False
+                GLib.timeout_add(10, go_to_null)
         else:
             self.pipeline.set_state(Gst.State.READY)
             self.__init_inputs()
@@ -620,8 +621,13 @@ class TetraApp(GObject.GObject):
                 self._to_remove[parent] = idx
                 if self.inputs:
                     # input-selector doesn't quite like when you remove/unlink the active pad.
-                    self.set_active_input_by_source(self.inputs[0])
-                parent.disconnect_source()
+                    self.set_active_input_by_source(self.inputs[0], transition=None)
+                else:
+                    if self.backgrounds:
+                        source = self.backgrounds[0]
+                        self.set_active_input_by_source(source, transition=False)
+                self.emit('source-disconnected', parent)
+                GLib.timeout_add(10, parent.disconnect_source)
                 log_error()
             if parent not in self._to_remove:
                 log_error()
