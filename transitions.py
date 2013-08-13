@@ -99,7 +99,7 @@ class VideoMixerTransition(BaseTransition):
                 logging.debug('VideoMixerTransition: previous_pad is current_pad')
             else:
                 if transition:
-                    self.transitions.get(transition, self.alpha_blend)(previous_pad, current_pad, duration)
+                    self.transitions.get(transition, self.alpha_blend)(previous_pad, current_pad, duration=duration)
                 else:
                     self.fast_switch(previous_pad, current_pad)
 
