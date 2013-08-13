@@ -90,12 +90,14 @@ class VideoMixerTransition(BaseTransition):
                 old_pads.append(pad)
                 if pad is not previous_pad:
                     self._reset_pad(pad, {'alpha':0, 'zorder':3})
+                else:
+                    self._reset_pad(pad, {'zorder':3})
         if current_pad:
             if previous_pad is None:
-                self._reset_pad(current_pad, {'alpha':1, 'zorder':2})
+                self._reset_pad(current_pad, {'alpha':1, 'zorder':2, 'xpos':0, 'ypos':0})
                 logging.debug('VideoMixerTransition: previous_pad is None')
             elif previous_pad is current_pad:
-                self._reset_pad(current_pad, {'alpha':1, 'zorder':2})
+                self._reset_pad(current_pad, {'alpha':1, 'zorder':2, 'xpos':0, 'ypos':0})
                 logging.debug('VideoMixerTransition: previous_pad is current_pad')
             else:
                 if transition:
@@ -151,7 +153,7 @@ class VideoMixerTransition(BaseTransition):
             # this case [-2147483647, 2147483648]
             return 0.5*(1 + 1.0*coord/2147483647)
 
-        self._reset_pad(old_pad, {'xpos':0, 'ypos':0, 'zorder':3, 'alpha':1})
+        self._reset_pad(old_pad, {'xpos':0, 'ypos':0, 'alpha':1})
         self._reset_pad(new_pad, {'xpos':0, 'ypos':0, 'alpha':0})
 
         if direction not in ["LR", "RL"]:
