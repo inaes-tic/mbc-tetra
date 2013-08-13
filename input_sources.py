@@ -147,6 +147,9 @@ class C920Input(BaseInput):
         agpad = Gst.GhostPad.new('audiosrc', self.asink.get_static_pad('src'))
         vgpad = Gst.GhostPad.new('videosrc', self.vsink.get_static_pad('src'))
 
+        self.vgpad = vgpad
+        self.agpad = agpad
+
         self.add_pad(agpad)
         self.add_pad(vgpad)
 
@@ -481,11 +484,11 @@ class ImageSource(BaseInput):
 
         vtestsrc = Gst.ElementFactory.make ('videotestsrc', None)
         props = {
-            'foreground-color': 0xe1FFFFFF,
+            'foreground-color': 0xFFFFFFFF,
             'background-color': 0,
             'pattern': 'solid-color',
             'do-timestamp': True,
-            #'is-live': True,
+            'is-live': True,
         }
         for prop, value in props.items():
             vtestsrc.set_property(prop, value)
@@ -502,7 +505,6 @@ class ImageSource(BaseInput):
 
         q1 = Gst.ElementFactory.make ('queue', None)
         q2 = Gst.ElementFactory.make ('queue', None)
-        q3 = Gst.ElementFactory.make ('queue2', None)
 
         props = {
             'max-size-buffers': 100,
@@ -513,23 +515,23 @@ class ImageSource(BaseInput):
             q1.set_property(prop, value)
             q2.set_property(prop, value)
 
-        for el in [overlay, vtestsrc, atestsrc, q1, q2, q3]:
+        for el in [overlay, vtestsrc, atestsrc, q1, q2]:
             self.add(el)
 
         atestsrc.link(q1)
         self.asink = q1
         agpad = Gst.GhostPad.new('audiosrc', self.asink.get_static_pad('src'))
-        self.add_pad(agpad)
         self.agpad = agpad
 
-        caps = Gst.Caps.from_string ('video/x-raw,format=ARGB,width=%d,height=%d,framerate=%s' % (width, height, VIDEO_RATE))
-        vtestsrc.link_filtered(overlay, caps)
+        vtestsrc.link_filtered(overlay, VIDEO_CAPS_SIZE)
 
         overlay.link(q2)
         self.vsink = q2
         vgpad = Gst.GhostPad.new('videosrc', self.vsink.get_static_pad('src'))
-        self.add_pad(vgpad)
         self.vgpad = vgpad
+
+        self.add_pad(vgpad)
+        self.add_pad(agpad)
 
         self.overlay.set_property('location', location)
 
