@@ -131,7 +131,7 @@ class TetraApp(GObject.GObject):
         sink.initialize()
         sink.connect('ready-to-record', self._start_record_ok)
         sink.connect('record-stopped', self._record_stopped)
-        sink.set_state(self.pipeline.get_state(0)[1])
+        sink.sync_state_with_parent()
 
     def add_input_source(self, source):
         source.connect('removed', self.source_removed_cb)
@@ -150,8 +150,8 @@ class TetraApp(GObject.GObject):
 
         source.initialize()
         self.current_source = source
-        source.set_state(self.pipeline.get_state(0)[1])
-        #self.set_active_input_by_source(source, transition=False)
+        source.sync_state_with_parent()
+        self.set_active_input_by_source(source, transition=False)
         GLib.idle_add(self._set_xvsync)
 
     def add_background_source(self, source, xpos=0, ypos=0):
@@ -166,7 +166,7 @@ class TetraApp(GObject.GObject):
         self.preview_sinks.append(source.xvsink)
 
         source.initialize()
-        source.set_state(self.pipeline.get_state(0)[1])
+        source.sync_state_with_parent()
         self.set_active_input_by_source(source, transition=False)
 
         GLib.idle_add(self._set_xvsync)
@@ -181,7 +181,7 @@ class TetraApp(GObject.GObject):
         #self.levels.append(source.level)
 
         source.initialize()
-        source.set_state(self.pipeline.get_state(0)[1])
+        source.sync_state_with_parent()
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_add_insert')
 
     def mute_channel (self, chanidx, mute):
@@ -278,25 +278,25 @@ class TetraApp(GObject.GObject):
             self.__initialize()
             firsttime=True
 
-    ##    if not self.inputs:
-    ##        return False
+        state = self.pipeline.get_state(0)
+        if state[1] in [Gst.State.READY, Gst.State.PAUSED]:
+            firsttime=True
 
         # if started with no cameras connected we need to set the state
         # of every input manually. (we call start() again when new devices are
         # added to sync everything)
-        state = self.pipeline.get_state(0)
         logging.debug('STARTING, CURRENT STATE: %s', state)
         if state[1] in [Gst.State.READY, Gst.State.PAUSED]:
             for src in self.inputs:
                 src.initialize()
-                src.set_state (Gst.State.PLAYING)
+                src.sync_state_with_parent()
             for src in self.audio_inserts:
                 src.initialize()
-                src.set_state (Gst.State.PLAYING)
+                src.sync_state_with_parent()
 
         for sink in self.outputs:
             sink.initialize()
-            sink.set_state (Gst.State.PLAYING)
+            sink.sync_state_with_parent()
 
         if firsttime:
             def f():
@@ -505,7 +505,6 @@ class TetraApp(GObject.GObject):
                     return False
                 GLib.timeout_add(10, go_to_null)
         else:
-            self.pipeline.set_state(Gst.State.READY)
             self.__init_inputs()
             self.__init_outputs()
 
