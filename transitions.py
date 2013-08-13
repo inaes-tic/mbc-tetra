@@ -160,9 +160,9 @@ class VideoMixerTransition(BaseTransition):
             new_startx = (VIDEO_WIDTH+1)
             old_endx = -(VIDEO_WIDTH+1)
 
-        # scaling introduced by our modifications to gstvideomixer2.c
-        new_startx = 0.5 + (1.0*new_startx) / (8*1920)
+        new_startx = 0.5*(1 + 1.0*new_startx/2147483647)
         old_endx = 0.5 + (1.0*old_endx) / (8*1920)
+        old_endx = 0.5*(1 + 1.0*old_endx/2147483647)
         defaultx = 0.5
 
         new_xcs = self._get_control_source(new_pad, "xpos")
