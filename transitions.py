@@ -184,9 +184,9 @@ class VideoMixerTransition(BaseTransition):
 
         new_pad.set_property('alpha', 1)
 
-    def slide_lr(self, old_pad, new_pad, direction="LR", duration=0.25):
-        return self.horiz_slide(old_pad, new_pad, direction, duration)
+    def slide_lr(self, old_pad, new_pad, duration=0.25):
+        return self.horiz_slide(old_pad, new_pad, direction="LR", duration=duration)
 
-    def slide_rl(self, old_pad, new_pad, direction="RL", duration=0.25):
-        return self.horiz_slide(old_pad, new_pad, direction, duration)
+    def slide_rl(self, old_pad, new_pad, duration=0.25):
+        return self.horiz_slide(old_pad, new_pad, direction="RL", duration=duration)
 
