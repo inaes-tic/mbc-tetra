@@ -89,19 +89,13 @@ class VideoMixerTransition(BaseTransition):
             else:
                 old_pads.append(pad)
                 if pad is not previous_pad:
-                    pad.set_property('alpha', 0)
-                    pad.set_property('zorder', 3)
-                    for prop in ['alpha', 'xpos', 'ypos']:
-                        cs = self._get_control_source(pad, prop)
-                        cs.unset_all()
+                    self._reset_pad(pad, {'alpha':0, 'zorder':3})
         if current_pad:
             if previous_pad is None:
-                current_pad.set_property('alpha', 1)
-                current_pad.set_property('zorder', 2)
+                self._reset_pad(current_pad, {'alpha':1, 'zorder':2})
                 logging.debug('VideoMixerTransition: previous_pad is None')
             elif previous_pad is current_pad:
-                current_pad.set_property('alpha', 1)
-                current_pad.set_property('zorder', 2)
+                self._reset_pad(current_pad, {'alpha':1, 'zorder':2})
                 logging.debug('VideoMixerTransition: previous_pad is current_pad')
             else:
                 if transition:
@@ -123,30 +117,43 @@ class VideoMixerTransition(BaseTransition):
         elem.add_control_binding(cb)
         return cs
 
+    def _reset_pad(self, pad, props=None):
+        for prop in ['alpha', 'xpos', 'ypos']:
+            cs = self._get_control_source(pad, prop)
+            cs.unset_all()
+        if props:
+            for prop,value in props.items():
+                pad.set_property(prop, value)
+
     def alpha_blend(self, old_pad, new_pad, duration=0.25):
         now = self.mixer.get_clock().get_time() # XXX: you better check for errors
         end = now + duration*Gst.SECOND
 
+        self._reset_pad(old_pad, {'xpos':0, 'ypos':0, 'zorder':3})
+        self._reset_pad(new_pad, {'xpos':0, 'ypos':0})
+
         new_alpha = self._get_control_source(new_pad)
         old_alpha = self._get_control_source(old_pad)
 
-        new_alpha.unset_all()
-        old_alpha.unset_all()
-
-        old_pad.set_property('zorder', 3)
         new_alpha.set(now, 0)
         old_alpha.set(now, 1)
         new_alpha.set(end, 1)
         old_alpha.set(end, 0)
 
     def fast_switch(self, old_pad, new_pad, duration=None):
-        old_pad.set_property('alpha', 0)
-        old_pad.set_property('zorder', 3)
-        new_pad.set_property('alpha', 1)
-        new_pad.set_property('zorder', 2)
+        self._reset_pad(old_pad, {'alpha':0, 'zorder':3, 'xpos':0, 'ypos':0})
+        self._reset_pad(new_pad, {'alpha':1, 'zorder':2, 'xpos':0, 'ypos':0})
         logging.debug('VideoMixerTransition: do fast_switch')
 
     def horiz_slide(self, old_pad, new_pad, direction="LR", duration=0.25):
+        def coord_to_controller(coord):
+            # the controller interface maps [0..1] to the property range, in
+            # this case [-2147483647, 2147483648]
+            return 0.5*(1 + 1.0*coord/2147483647)
+
+        self._reset_pad(old_pad, {'xpos':0, 'ypos':0, 'zorder':3, 'alpha':1})
+        self._reset_pad(new_pad, {'xpos':0, 'ypos':0, 'alpha':0})
+
         if direction not in ["LR", "RL"]:
             direction = "LR"
 
@@ -154,36 +161,25 @@ class VideoMixerTransition(BaseTransition):
         end = now + duration*Gst.SECOND
 
         if direction == "LR":
-            new_startx = -(VIDEO_WIDTH+1)
-            old_endx = (VIDEO_WIDTH+1)
+            new_startx = -VIDEO_WIDTH
+            old_endx = VIDEO_WIDTH
         else:
-            new_startx = (VIDEO_WIDTH+1)
-            old_endx = -(VIDEO_WIDTH+1)
+            new_startx = VIDEO_WIDTH
+            old_endx = -VIDEO_WIDTH
 
-        new_startx = 0.5*(1 + 1.0*new_startx/2147483647)
-        old_endx = 0.5 + (1.0*old_endx) / (8*1920)
-        old_endx = 0.5*(1 + 1.0*old_endx/2147483647)
+        new_startx = coord_to_controller(new_startx)
+        old_endx = coord_to_controller(old_endx)
         defaultx = 0.5
 
         new_xcs = self._get_control_source(new_pad, "xpos")
         old_xcs = self._get_control_source(old_pad, "xpos")
-
-        new_xcs.unset_all()
-        old_xcs.unset_all()
-        self._get_control_source(new_pad, "alpha").unset_all()
-        self._get_control_source(old_pad, "alpha").unset_all()
-
-        old_pad.set_property('xpos', 0)
-        old_pad.set_property('zorder', 1)
-        old_pad.set_property('alpha', 1)
-
-        new_pad.set_property('alpha', 0)
-        new_pad.set_property('zorder', 2)
+        old_alpha = self._get_control_source(old_pad, "alpha")
 
         old_xcs.set(now, defaultx)
         new_xcs.set(now, new_startx)
 
         old_xcs.set(end, old_endx)
+        old_alpha.set(end, 0)
         new_xcs.set(end, defaultx)
 
         new_pad.set_property('alpha', 1)
