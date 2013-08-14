@@ -1,0 +1,4 @@
+For transitions other than the basic alpha blend to work you need either a recent
+version of GStreamer from git until 1.1.4 comes out or to manually apply
+http://cgit.freedesktop.org/gstreamer/gstreamer/commit/?id=d4f6c8e0e69c5f581ab7fefd1b592f5b4701205c
+to yours.
