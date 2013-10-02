@@ -47,6 +47,7 @@ class BaseOutput(Gst.Bin):
         venc = self._build_video_encoder()
         vpar = self._build_video_parser()
         aenc = self._build_audio_encoder()
+        apar = self._build_audio_parser()
         vmux = self._build_muxer()
         sink = self._build_sink()
 
@@ -56,6 +57,7 @@ class BaseOutput(Gst.Bin):
             return
 
         els.append(vpar)
+        els.append(apar)
         for el in els:
             if el: self.add(el)
 
@@ -78,7 +80,11 @@ class BaseOutput(Gst.Bin):
             self.add(el)
 
         aq.link(aenc)
-        aenc.link(aenct)
+        if apar:
+            aenc.link(apar)
+            apar.link(aenct)
+        else:
+            aenc.link(aenct)
         aenct.link(vmuxaiq)
         vmuxaiq.link(vmux)
 
@@ -141,6 +147,9 @@ class BaseOutput(Gst.Bin):
         return None
 
     def _build_audio_encoder(self, *args):
+        return None
+
+    def _build_audio_parser(self, *args):
         return None
 
     def _build_muxer(self, *args):
@@ -229,6 +238,10 @@ class BaseH264Output(BaseOutput):
         aenc = Gst.ElementFactory.make('avenc_aac', None)
         aenc.set_property('bitrate', conf.setdefault('audio_bitrate', 192000))
         return aenc
+
+    def _build_audio_parser(self, *args):
+        parser = Gst.ElementFactory.make ('aacparse', None)
+        return parser
 
     def _build_sink(self, *args):
         conf = self.conf
