@@ -146,10 +146,13 @@ class MainWindow(object):
             Gdk.threads_leave ()
 
     def source_disconnected_cb (self, app, source):
+        logging.debug('SOURCE DISCONNECTED CB EN TETRA MAIN')
         if source in self.previews:
-            preview = self.previews[source]
+            logging.debug('SOURCE DISCONNECTED CB EN TETRA MAIN source en previews')
+            preview = self.previews.pop(source)
             self.preview_box.remove(preview)
             preview.destroy()
+            logging.debug('SOURCE DISCONNECTED CB EN TETRA MAIN source en previews REMOVIDA')
         return True
 
     def update_master_level (self, app, peaks):

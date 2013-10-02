@@ -1,5 +1,6 @@
 import logging
 
+import threading
 import time
 import sys
 import os
@@ -46,6 +47,7 @@ class TetraApp(GObject.GObject):
         self._about_to_record = False
         self._recording = False
         self._to_remove = {}
+        self._remove_lck = threading.Lock()
 
         self.noise_baseline = DEFAULT_NOISE_BASELINE
         self.speak_up_threshold = SPEAK_UP_THRESHOLD
@@ -262,7 +264,6 @@ class TetraApp(GObject.GObject):
 
         self._initialized = True
         self._last_state = [None, None, None]
-        ret = self.pipeline.set_state (Gst.State.READY)
 
     def __init_inputs(self):
         for src in self.inputs:
@@ -296,9 +297,16 @@ class TetraApp(GObject.GObject):
                 src.initialize()
                 src.sync_state_with_parent()
 
-        for sink in self.outputs:
-            sink.initialize()
-            sink.sync_state_with_parent()
+            for sink in self.outputs:
+                sink.initialize()
+                sink.sync_state_with_parent()
+
+    ##    for src in self.inputs:
+    ##        src.sync_state_with_parent()
+    ##    for src in self.audio_inserts:
+    ##        src.sync_state_with_parent()
+    ##    for sink in self.outputs:
+    ##        sink.sync_state_with_parent()
 
         if firsttime:
             def f():
@@ -497,30 +505,40 @@ class TetraApp(GObject.GObject):
         logging.debug('SOURCE REMOVED CB %s', source)
         if source in self.pipeline.children:
             self.pipeline.remove(source)
+        logging.debug('SOURCE BIN REMOVED FROM PIPELINE OK')
         for coll in [self._to_remove, self.audio_avg, self.audio_peak]:
             try:
                 coll.pop(source)
             except KeyError:
                 pass
+        logging.debug('SOURCE BIN REMOVED POP FROM COLL OK')
 
         for idx, sink in enumerate(self.preview_sinks):
             if sink in source:
                 self.preview_sinks.pop(idx)
                 break
+        logging.debug('SOURCE BIN REMOVED SINK POP OK')
 
 
         if not self.inputs:
             if not self.backgrounds:
                 def go_to_null():
                     self.pipeline.set_state(Gst.State.NULL)
+                    logging.debug('SOURCE BIN REMOVED OK')
                     return False
+                self.emit('source-disconnected', source)
                 GLib.timeout_add(10, go_to_null)
-        else:
-            self.__init_inputs()
-            self.__init_outputs()
+                return
+#        else:
+###            self.__init_inputs()
+###            self.__init_outputs()
+###
+###            self.pipeline.set_state(Gst.State.PLAYING)
+##            self.pipeline.recalculate_latency()
+##            GLib.idle_add(self._set_xvsync)
 
-            self.pipeline.set_state(Gst.State.PLAYING)
-            GLib.idle_add(self._set_xvsync)
+        self.pipeline.set_state(Gst.State.PLAYING)
+        self.pipeline.recalculate_latency()
 
         self.emit('source-disconnected', source)
 
@@ -572,6 +590,8 @@ class TetraApp(GObject.GObject):
         elif msg.type == Gst.MessageType.ERROR:
             parent = msg.src.get_parent()
             if parent in self.inputs:
+                self._remove_lck.acquire()
+
                 idx = self.inputs.index(parent)
                 self.inputs.pop(idx)
                 self._to_remove[parent] = idx
@@ -582,9 +602,10 @@ class TetraApp(GObject.GObject):
                     if self.backgrounds:
                         source = self.backgrounds[0]
                         self.set_active_input_by_source(source, transition=False)
-                self.emit('source-disconnected', parent)
                 GLib.timeout_add(10, parent.disconnect_source)
                 log_error()
+                self._remove_lck.release()
+
             if parent not in self._to_remove:
                 log_error()
 

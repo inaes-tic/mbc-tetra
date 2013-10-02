@@ -43,6 +43,7 @@ class BaseInput(BaseArchivable):
         self.volume = None
         self._on_error = False
         self._on_error_lck = threading.Lock()
+        self._probes = {}
 
     def set_volume(self, volume):
         if self.volume is None:
@@ -66,11 +67,7 @@ class BaseInput(BaseArchivable):
 
     def __unlink_and_set_to_null (self):
         parent = self.get_parent()
-        if parent:
-            logging.debug('SET EL TO NULL')
-            self.set_state(Gst.State.NULL)
-            for element in self.children:
-                element.set_state(Gst.State.NULL)
+        logging.debug('SET EL %s TO NULL %s', self, self.set_state(Gst.State.NULL))
 
         for pad in self.pads:
             peer = pad.get_peer()
@@ -88,7 +85,7 @@ class BaseInput(BaseArchivable):
                     parent.release_request_pad(peer)
                     logging.debug('PAD PARENT RELEASE PAD OK')
 
-        logging.debug('SET EL TO NULL OK?')
+        logging.debug('SET EL TO NULL OK? %s', self)
 
         self.emit('removed')
 
@@ -103,9 +100,12 @@ class BaseInput(BaseArchivable):
                 ok = False
         if ok:
             logging.debug('PAD BLOCK ADD IDLE')
-            GLib.timeout_add(0, self.__unlink_and_set_to_null)
+            for p, probe in self._probes.items():
+                p.remove_probe(probe)
+            GLib.timeout_add(500, self.__unlink_and_set_to_null)
+            return Gst.PadProbeReturn.REMOVE
 
-        return Gst.PadProbeReturn.REMOVE
+        return Gst.PadProbeReturn.OK
 
     def do_handle_message(self, message):
         if not message:
@@ -133,21 +133,21 @@ class BaseInput(BaseArchivable):
         state = self.get_state(0)
         logging.debug('DISCONNECT SOURCE CURRENT STATE %s', state)
         if state[1] == Gst.State.NULL:
-            GLib.timeout_add(0, self.__unlink_and_set_to_null)
-            return
+            GLib.timeout_add(10, self.__unlink_and_set_to_null)
+            logging.debug('PAD BLOCK ADD TIMEOUT disconnect_source STATE IS NULL')
+            return False
 
         ok = True
         for pad in self.pads:
             if pad.is_blocked() == False:
                 ok = False
-            logging.debug('DISCONNECT SOURCE ADD PAD PROBE FOR %s PAD IS BLOCKED? %s PAD IS LINKED? %s', pad, pad.is_blocked(), pad.is_linked())
-            pad.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM | Gst.PadProbeType.BLOCK_UPSTREAM, self.pad_block_cb, None)
+                if pad not in self._probes:
+                    self._probes[pad] = pad.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM | Gst.PadProbeType.BLOCK_UPSTREAM, self.pad_block_cb, None)
+                    logging.debug('DISCONNECT SOURCE ADD PAD PROBE FOR %s PAD IS BLOCKED? %s PAD IS LINKED? %s', pad, pad.is_blocked(), pad.is_linked())
         if ok:
-            logging.debug('PAD BLOCK ADD IDLE')
-            GLib.timeout_add(0, self.__unlink_and_set_to_null)
-            return False
-        else:
-            return True
+            GLib.timeout_add(10, self.__unlink_and_set_to_null)
+            logging.debug('PAD BLOCK ADD TIMEOUT disconnect_source')
+        return False
 
 class C920Input(BaseInput):
     _mux_pad_names = ['video_%u', 'audio_%u']
