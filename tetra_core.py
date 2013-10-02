@@ -168,14 +168,16 @@ class TetraApp(GObject.GObject):
         self.pipeline.add(source)
         self.backgrounds.append(source)
 
-        source.link(self.amixer)
-        source.link(self.inputsel)
+        source.link_pads('videosrc', self.inputsel, 'sink_%u')
+        source.link_pads('audiosrc', self.amixer, 'sink_%u')
 
         self.preview_sinks.append(source.xvsink)
 
         source.initialize()
         source.sync_state_with_parent()
-        self.set_active_input_by_source(source, transition=False)
+        if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
+            self.start()
+        self.pipeline.recalculate_latency()
 
         GLib.idle_add(self._set_xvsync)
 
