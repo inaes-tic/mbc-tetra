@@ -90,7 +90,7 @@ class VideoMixerTransition(BaseTransition):
                 break
         return mixerpad
 
-    def set_active_input_by_source(self, source, transition=True, duration=0.25):
+    def set_active_input_by_source(self, source, transition='fast', duration=0.25):
         if source == self.current_input:
             transition = False
 
