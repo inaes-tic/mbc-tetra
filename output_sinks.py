@@ -68,8 +68,11 @@ class BaseOutput(Gst.Bin):
         vmuxviq = Gst.ElementFactory.make('queue2', 'video mux video in q')
         vmuxaiq = Gst.ElementFactory.make('queue2', 'video mux audio in q')
 
-        streamvq = Gst.ElementFactory.make('queue2', 'video archive q')
-        streamaq = Gst.ElementFactory.make('queue2', 'audio archive q')
+        streamvq = Gst.ElementFactory.make('queue', 'video archive q')
+        streamaq = Gst.ElementFactory.make('queue', 'audio archive q')
+
+        streamvq.set_property('silent', True)
+        streamaq.set_property('silent', True)
 
         aenct = Gst.ElementFactory.make('tee', 'audio enc t')
         venct = Gst.ElementFactory.make('tee', 'video enc t')
