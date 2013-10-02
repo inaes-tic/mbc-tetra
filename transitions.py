@@ -27,6 +27,12 @@ class BaseTransition(GObject.Object):
     def set_active_input_by_source(self, source, *args, **kwargs):
         raise NotImplemented
 
+    def start_pip(self, source, position="LR", *args, **kwargs):
+        raise NotImplemented
+
+    def stop_pip(self, source):
+        raise NotImplemented
+
 class InputSelectorTransition(BaseTransition):
     def __init__(self, *args):
         BaseTransition.__init__(self)
