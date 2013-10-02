@@ -31,6 +31,7 @@ class BaseArchivable(Gst.Bin):
     }
     filename_suffix = ''
     _mux_pad_names = None
+    _filename_template = None
 
     def __init__(self):
         Gst.Bin.__init__(self)
@@ -43,8 +44,10 @@ class BaseArchivable(Gst.Bin):
         conf = config.get('FileArchiving', {})
         if folder is None:
             folder = conf.setdefault('folder', None)
-        if name_template is None:
+        if name_template is None and not self._filename_template:
             name_template = conf.setdefault('name_template', 'captura_tetra')
+        else:
+            name_template = self._filename_template
 
         if folder is None:
             return False
