@@ -95,8 +95,6 @@ class MainWindow(object):
             self.previews[source] = preview
             preview.set_source(source)
             self.app.add_input_source(source)
-            self.app.live_sink.set_property('sync', XV_SYNC)
-            self.app.start()
             Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.CAPS_DETAILS , 'source_added_cb')
         # XXX: FIXME: we should wait till pulseaudio releases the card.
         # (or disable it)
