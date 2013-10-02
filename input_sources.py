@@ -43,6 +43,7 @@ class BaseInput(BaseArchivable):
         self.volume = None
         self.xvsink = None
         self.level = None
+        self.vcaps = None
         self._on_error = False
         self._on_error_lck = threading.Lock()
         self._probes = {}
@@ -55,6 +56,20 @@ class BaseInput(BaseArchivable):
         elif volume < 0:
             volume = 0
         self.volume.set_property('volume', volume)
+
+    def set_geometry(self, width=None, height=None):
+        if not self.vcaps:
+            return
+
+        tmpl = 'video/x-raw, framerate=%s ' % VIDEO_RATE
+        if width:
+            tmpl += ',width=%i' % width
+        if height:
+            tmpl += ',height=%i' % height
+
+        caps = Gst.Caps.from_string(tmpl)
+        if caps:
+            self.vcaps.set_property('caps', caps)
 
     def set_mute(self, mute):
         if self.volume is None:
@@ -216,13 +231,16 @@ class C920Input(BaseInput):
         streamvq.set_property('silent', True)
         streamvt = Gst.ElementFactory.make ('tee', None)
         vconv = Gst.ElementFactory.make ('videoconvert', None)
+        vscale = Gst.ElementFactory.make ('videoscale', None)
+        vcaps = Gst.ElementFactory.make ('capsfilter', None)
         sink = Gst.ElementFactory.make ('xvimagesink', None)
         sink.set_property('sync', XV_SYNC)
 
         self.xvsink = sink
         self.vsrc = src
+        self.vcaps = vcaps
 
-        for el in (src, sink, q0, q1, q2, streamvq, streamvt, tee, parse, dec, vconv):
+        for el in (src, sink, q0, q1, q2, streamvq, streamvt, tee, parse, dec, vconv, vscale, vcaps):
             self.add(el)
 
         if props:
@@ -241,7 +259,9 @@ class C920Input(BaseInput):
         tee.link(q2)
         q2.link(sink)
         q1.link(vconv)
-        self.vsink = vconv # antes q1
+        vconv.link(vscale)
+        vscale.link(vcaps)
+        self.vsink = vcaps
 
         self.add_stream_writer_source(streamvq)
 
@@ -621,17 +641,6 @@ class UriDecodebinSource(BaseInput):
 
         self.set_geometry(width, height)
 
-
-    def set_geometry(self, width=None, height=None):
-        tmpl = 'video/x-raw, framerate=%s ' % VIDEO_RATE
-        if width:
-            tmpl += ',width=%i' % width
-        if height:
-            tmpl += ',height=%i' % height
-
-        caps = Gst.Caps.from_string(tmpl)
-        if caps:
-            self.vcaps.set_property('caps', caps)
 
     def do_handle_message(self, message):
         if not message:
