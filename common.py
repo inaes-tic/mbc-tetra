@@ -43,4 +43,4 @@ MIN_PEAK = -70
 
 MANUAL=False
 
-XV_SYNC=False
+XV_SYNC=True
