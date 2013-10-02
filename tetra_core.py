@@ -158,7 +158,10 @@ class TetraApp(GObject.GObject):
         logging.debug('ADD INPUT SOURCE, SYNC WITH PARENT: %s', source.sync_state_with_parent())
         #self.set_active_input_by_source(source, transition=False)
         if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
-            self.start()
+            if self.inputs or self.backgrounds:
+                self.pipeline.set_state(Gst.State.PLAYING)
+            else:
+                self.start()
         self.pipeline.recalculate_latency()
         logging.debug('ADD INPUT SOURCE , PIPE STATE: %s', self.pipeline.get_state(0))
         GLib.idle_add(self._set_xvsync)
