@@ -559,7 +559,7 @@ GObject.type_register(ImageSource)
 
 
 class UriDecodebinSource(BaseInput):
-    def __init__(self, location=None, name=None):
+    def __init__(self, location=None, name=None, width=None, height=None):
         BaseInput.__init__(self)
         if name:
             self.set_property('name', name)
@@ -579,6 +579,19 @@ class UriDecodebinSource(BaseInput):
         self.add_pad(agpad)
         self.add_pad(vgpad)
 
+        self.set_geometry(width, height)
+
+
+    def set_geometry(self, width=None, height=None):
+        tmpl = 'video/x-raw '
+        if width:
+            tmpl += ',width=%i' % width
+        if height:
+            tmpl += ',height=%i' % height
+
+        caps = Gst.Caps.from_string(tmpl)
+        if caps:
+            self.vcaps.set_property('caps', caps)
 
     def __pad_add_cb(self, element, newpad):
         for el in [self.vrate, self.arate]:
@@ -610,14 +623,23 @@ class UriDecodebinSource(BaseInput):
         vconv = Gst.ElementFactory.make('videoconvert', 'DecodebinSource videoconvert ')
         vrate = Gst.ElementFactory.make('videorate', 'DecodebinSource videorate')
 
-        for el in [vq, vconv, vrate]:
+        vscale = Gst.ElementFactory.make('videoscale', 'DecodebinSource videoscale')
+        vscale.set_property('add-borders', True)
+
+        vcaps = Gst.ElementFactory.make('capsfilter', 'DecodebinSource videocaps')
+
+        for el in [vq, vconv, vrate, vscale, vcaps]:
             self.add(el)
 
         vrate.link(vconv)
-        vconv.link(vq)
+        vconv.link(vscale)
+        vscale.link(vcaps)
+        vcaps.link(vq)
 
         self.vq = vq
         self.vrate = vrate
+        self.vconv = vconv
+        self.vcaps = vcaps
 
 GObject.type_register(UriDecodebinSource)
 
