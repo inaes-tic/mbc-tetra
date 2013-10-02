@@ -132,11 +132,14 @@ class BaseInput(BaseArchivable):
             return True
 
 class C920Input(BaseInput):
+    _mux_pad_names = ['video_%u', 'audio_%u']
+    filename_suffix = '.mkv'
     def __init__(self, video_props, audio_props, name=None, serial='', *args, **kwargs):
         BaseInput.__init__(self)
         if name:
             self.set_property('name', name)
 
+        self._filename_template = serial
         self.asink = None
         self.vsink = None
 
@@ -173,6 +176,11 @@ class C920Input(BaseInput):
             logging.info('%s setting %s to %s' % (dev, ctrl, value))
             os.system(cmd % (ctrl, str(value), dev))
 
+    def _build_muxer(self, *args):
+        vmux = Gst.ElementFactory.make('matroskamux', None)
+        vmux.set_property('streamable', True)
+        return vmux
+
     def __add_video_source (self, props):
 # XXX FIXME: cambiar el jpeg por raw mas luego.
         props.update(VIDEO_PROPS)
@@ -184,6 +192,9 @@ class C920Input(BaseInput):
         dec = Gst.ElementFactory.make ('jpegdec', None)
         q1 = Gst.ElementFactory.make ('queue2', None)
         q2 = Gst.ElementFactory.make ('queue2', None)
+        streamvq = Gst.ElementFactory.make('queue', 'video archive q')
+        streamvq.set_property('silent', True)
+        streamvt = Gst.ElementFactory.make ('tee', None)
         vconv = Gst.ElementFactory.make ('videoconvert', None)
         sink = Gst.ElementFactory.make ('xvimagesink', None)
         sink.set_property('sync', XV_SYNC)
@@ -191,7 +202,7 @@ class C920Input(BaseInput):
         self.xvsink = sink
         self.vsrc = src
 
-        for el in (src, sink, q0, q1, q2, tee, parse, dec, vconv):
+        for el in (src, sink, q0, q1, q2, streamvq, streamvt, tee, parse, dec, vconv):
             self.add(el)
 
         if props:
@@ -201,7 +212,9 @@ class C920Input(BaseInput):
 # XXX:
         #q0.set_property ('max-size-time', int(1*Gst.SECOND))
         src.link(q0)
-        q0.link_filtered(parse, VIDEO_CAPS)
+        q0.link_filtered(streamvt, VIDEO_CAPS)
+        streamvt.link_filtered(parse, VIDEO_CAPS)
+        streamvt.link(streamvq)
         parse.link(dec)
         dec.link(tee)
         tee.link(q1)
@@ -210,6 +223,7 @@ class C920Input(BaseInput):
         q1.link(vconv)
         self.vsink = vconv # antes q1
 
+        self.add_stream_writer_source(streamvq)
 
     def __add_audio_source (self, props):
         props.update(AUDIO_PROPS)
@@ -220,6 +234,8 @@ class C920Input(BaseInput):
         q1 = Gst.ElementFactory.make ('queue2', None)
         q2 = Gst.ElementFactory.make ('queue2', None)
         q3 = Gst.ElementFactory.make ('queue2', None)
+        streamaq = Gst.ElementFactory.make('queue', 'audio archive q')
+        streamaq.set_property('silent', True)
         self.asink = q2
         tee = Gst.ElementFactory.make ('tee', None)
         volume = Gst.ElementFactory.make ('volume', None)
@@ -240,7 +256,7 @@ class C920Input(BaseInput):
         level.set_property ("message", True)
         self.level = level
 
-        for el in (src, q0, q1, q2, q3, tee, volume, fasink, aconv, aconv2, ares, flt, level):
+        for el in (src, q0, q1, q2, q3, streamaq, tee, volume, fasink, aconv, aconv2, ares, flt, level):
             self.add(el)
 
         if props:
@@ -252,6 +268,7 @@ class C920Input(BaseInput):
         volume.link (tee)
         tee.link (q1)
         tee.link (q3)
+        tee.link (streamaq)
         q3.link (aconv2)
         aconv2.link(ares)
         ares.link(q2)
@@ -260,6 +277,7 @@ class C920Input(BaseInput):
         flt.link (level)
         level.link(fasink)
 
+        self.add_stream_writer_source(streamaq)
 
 GObject.type_register(C920Input)
 
