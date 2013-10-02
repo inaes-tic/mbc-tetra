@@ -621,7 +621,7 @@ class UriDecodebinSource(BaseInput):
 
 
     def set_geometry(self, width=None, height=None):
-        tmpl = 'video/x-raw '
+        tmpl = 'video/x-raw, framerate=%s ' % VIDEO_RATE
         if width:
             tmpl += ',width=%i' % width
         if height:
