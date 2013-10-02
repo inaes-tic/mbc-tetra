@@ -1,12 +1,22 @@
 {
-    "use_dark_theme": true,
-    "main_ui": "main_ui_2.ui",
-    "preview_ui": "preview_box_horiz.ui",
     "FLVOutput": {
-        "host": "127.0.0.1",
-        "port": 9078,
-        "x264_speed_preset": "ultrafast",
-        "x264_bitrate": 1024
-
-    }
+        "audio_bitrate": 192000, 
+        "host": "127.0.0.1", 
+        "port": 9078, 
+        "x264_bitrate": 1024, 
+        "x264_speed_preset": "ultrafast"
+    }, 
+    "FileArchiving": {
+        "folder": "/dev/shm/capturas", 
+        "name_template": "captura_tetra"
+    }, 
+    "main_ui": "main_ui_2.ui", 
+    "mastermonitor_ui": "master_monitor.ui", 
+    "output_mix": {
+        "extern_card": "default", 
+        "mix-source": "internal"
+    }, 
+    "preview_ui": "preview_box_horiz.ui", 
+    "theme": "Adwaita", 
+    "use_dark_theme": true
 }
