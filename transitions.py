@@ -71,6 +71,19 @@ class VideoMixerTransition(BaseTransition):
             'slide_rl': self.slide_rl,
         }
 
+    def get_mixerpad_for_source(self, source):
+        mixerpad = None
+        if not source:
+            return None
+
+        peers = [pad.get_peer() for pad in source.pads]
+
+        for pad in self.mixer.sinkpads:
+            if pad in peers:
+                mixerpad = pad
+                break
+        return mixerpad
+
     def set_active_input_by_source(self, source, transition=True, duration=0.25):
         if source == self.current_input:
             transition = False
@@ -81,11 +94,7 @@ class VideoMixerTransition(BaseTransition):
         previous_pad = None
 
         if self.current_input:
-            peers = [pad.get_peer() for pad in self.current_input.pads]
-            for pad in mixer.sinkpads:
-                if pad in peers:
-                    previous_pad = pad
-                    break
+            previous_pad = self.get_mixerpad_for_source(self.current_input)
 
         peers = [pad.get_peer() for pad in source.pads]
         for pad in mixer.sinkpads:
