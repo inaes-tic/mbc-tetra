@@ -2,6 +2,7 @@
 
 import logging
 
+import threading
 import time
 import sys
 import os
@@ -40,6 +41,8 @@ class BaseInput(BaseArchivable):
         Gst.Bin.__init__(self)
         BaseArchivable.__init__(self)
         self.volume = None
+        self._on_error = False
+        self._on_error_lck = threading.Lock()
 
     def set_volume(self, volume):
         if self.volume is None:
@@ -103,6 +106,21 @@ class BaseInput(BaseArchivable):
             GLib.timeout_add(0, self.__unlink_and_set_to_null)
 
         return Gst.PadProbeReturn.REMOVE
+
+    def do_handle_message(self, message):
+        if not message:
+            return
+
+        if message.type == Gst.MessageType.ERROR:
+            if self._on_error_lck.acquire(True):
+                if not self._on_error:
+                    logging.error('ERROR en src :%s %s', message, message.parse_error())
+                    self._on_error = True
+                    Gst.Bin.do_handle_message(self, message)
+                self._on_error_lck.release()
+            return
+
+        Gst.Bin.do_handle_message(self, message)
 
     def disconnect_source(self):
         # in order to properly remove ourselves from the pipeline we need to block
