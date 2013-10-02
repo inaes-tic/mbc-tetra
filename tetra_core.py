@@ -142,7 +142,7 @@ class TetraApp(GObject.GObject):
         self.inputs.append(source)
 
         source.link_pads('videosrc', self.inputsel, 'sink_%u')
-        source.link_pads_filtered('audiosrc', self.amixer, 'sink_%u', AUDIO_CAPS)
+        source.link_pads('audiosrc', self.amixer, 'sink_%u')
 
         self.preview_sinks.append(source.xvsink)
         self.volumes.append(source.volume)
