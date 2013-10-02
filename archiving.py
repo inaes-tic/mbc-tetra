@@ -36,6 +36,7 @@ class BaseArchivable(Gst.Bin):
     def __init__(self):
         Gst.Bin.__init__(self)
         self._stream_writer_sources = []
+        self.stream_writer = None
 
     def add_stream_writer_source(self, src):
         self._stream_writer_sources.append(src)
