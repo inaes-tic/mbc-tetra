@@ -24,6 +24,7 @@ if not Gst.is_initialized():
 GObject.threads_init()
 
 from common import *
+from archiving import BaseArchivable
 AUDIO_PROPS = { 'do-timestamp': True }
 VIDEO_PROPS = {}
 VIDEO_PROPS = { 'do-timestamp': True }
@@ -31,12 +32,13 @@ VIDEO_PROPS = { 'do-timestamp': True }
 class GeneralInputError(Exception):
     pass
 
-class BaseInput(Gst.Bin):
+class BaseInput(BaseArchivable):
     __gsignals__ = {
        "removed": (GObject.SIGNAL_RUN_FIRST, None, []),
     }
     def __init__(self):
         Gst.Bin.__init__(self)
+        BaseArchivable.__init__(self)
         self.volume = None
 
     def set_volume(self, volume):
