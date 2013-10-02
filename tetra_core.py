@@ -135,6 +135,8 @@ class TetraApp(GObject.GObject):
 
     def add_input_source(self, source):
         source.connect('removed', self.source_removed_cb)
+        source.connect('ready-to-record', self._start_record_ok)
+        source.connect('record-stopped', self._record_stopped)
         self.audio_avg[source] = deque (maxlen=WINDOW_LENGTH * 10)
         self.audio_peak[source] = deque (maxlen=WINDOW_LENGTH * 10)
 
@@ -333,8 +335,11 @@ class TetraApp(GObject.GObject):
         for out in self.outputs:
             if out.start_file_recording():
                 self._rec_ok_cnt += 1
+        for inp in self.inputs:
+            if inp.start_file_recording():
+                self._rec_ok_cnt += 1
 
-        # no sink was able to start recording
+        # no sink or source was able to start recording
         if self._rec_ok_cnt == 0:
             self.pipeline.set_state(Gst.State.PLAYING)
 
@@ -356,18 +361,24 @@ class TetraApp(GObject.GObject):
         if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
             return
 
-        self._rec_stop_cnt = len(self.outputs)
+        self._rec_stop_cnt = len(self.outputs) + len(self.inputs)
         self._about_to_record = True
         for out in self.outputs:
             out.stop_file_recording()
+
+        for inp in self.inputs:
+            inp.stop_file_recording()
 
 
     def stop_file_recording(self):
         if not self._recording:
             return
-        self._rec_stop_cnt = len(self.outputs)
+        self._rec_stop_cnt = len(self.outputs) + len(self.inputs)
         for out in self.outputs:
             out.stop_file_recording()
+
+        for inp in self.inputs:
+            inp.stop_file_recording()
 
     def calibrate_bg_noise (self, *args):
         bgnoise = 0
