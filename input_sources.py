@@ -557,6 +557,70 @@ class ImageSource(BaseInput):
 
 GObject.type_register(ImageSource)
 
+
+class UriDecodebinSource(BaseInput):
+    def __init__(self, location=None, name=None):
+        BaseInput.__init__(self)
+        if name:
+            self.set_property('name', name)
+
+        self.__build_audio_pipeline()
+        self.__build_video_pipeline()
+
+        decodebin = Gst.ElementFactory.make('uridecodebin', 'Decodebin Source (decodebin)')
+        self.add(decodebin)
+        decodebin.connect('pad-added', self.__pad_add_cb)
+        decodebin.set_property('uri', location)
+        self.decodebin = decodebin
+
+        agpad = Gst.GhostPad.new('audiosrc', self.aq.get_static_pad('src'))
+        vgpad = Gst.GhostPad.new('videosrc', self.vq.get_static_pad('src'))
+
+        self.add_pad(agpad)
+        self.add_pad(vgpad)
+
+
+    def __pad_add_cb(self, element, newpad):
+        for el in [self.vrate, self.arate]:
+            sink = el.get_compatible_pad(newpad, newpad.get_pad_template_caps())
+            if sink and not sink.is_linked():
+                newpad.link(sink)
+                break
+
+    def __build_audio_pipeline(self):
+        aq    = Gst.ElementFactory.make('queue2', 'DecodebinSource Audio Q')
+        aconv = Gst.ElementFactory.make('audioconvert', 'DecodebinSource audioconvert ')
+        arate = Gst.ElementFactory.make('audiorate', 'DecodebinSource audiorate')
+        avol  = Gst.ElementFactory.make('volume', 'DecodebinSource volume')
+
+        for el in [aq, aconv, arate, avol]:
+            self.add(el)
+
+        arate.link(aconv)
+        aconv.link(avol)
+        avol.link(aq)
+
+        self.aq = aq
+        self.arate = arate
+        self.volume = avol
+
+
+    def __build_video_pipeline(self):
+        vq    = Gst.ElementFactory.make('queue2', 'DecodebinSource Video Q')
+        vconv = Gst.ElementFactory.make('videoconvert', 'DecodebinSource videoconvert ')
+        vrate = Gst.ElementFactory.make('videorate', 'DecodebinSource videorate')
+
+        for el in [vq, vconv, vrate]:
+            self.add(el)
+
+        vrate.link(vconv)
+        vconv.link(vq)
+
+        self.vq = vq
+        self.vrate = vrate
+
+GObject.type_register(UriDecodebinSource)
+
 ALL_PROBES = [C920Probe]
 
 
