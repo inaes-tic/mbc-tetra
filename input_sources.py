@@ -41,6 +41,8 @@ class BaseInput(BaseArchivable):
         Gst.Bin.__init__(self)
         BaseArchivable.__init__(self)
         self.volume = None
+        self.xvsink = None
+        self.level = None
         self._on_error = False
         self._on_error_lck = threading.Lock()
         self._probes = {}
