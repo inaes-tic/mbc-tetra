@@ -34,6 +34,7 @@ class MainWindow(object):
     def __init__(self, app):
         self.app = app
         self.imon = input_sources.InputMonitor()
+        self._pip_idx = -1
 
         self.builder = Gtk.Builder ()
         self.builder.add_from_file (config.get('main_ui', 'main_ui_2.ui'))
@@ -75,6 +76,25 @@ class MainWindow(object):
         #live.connect('draw', self.live_draw_cb)
 
         self.builder.get_object('automatico').connect('clicked', self.auto_click_cb)
+        def rec_start(*args):
+            app.start_file_recording()
+        def rec_stop(*args):
+            app.stop_file_recording()
+        self.builder.get_object('rec_start').connect('clicked', rec_start)
+        self.builder.get_object('rec_stop').connect('clicked', rec_stop)
+
+        but = self.builder.get_object('clear_pip')
+        but.connect('clicked', self.pip_stop)
+
+        for name in "TR CR BR TL CL BL TC CC BC".split():
+            but = self.builder.get_object(name)
+            if but:
+                but.connect('clicked', self.pip, name)
+        for idx in range(3):
+            but = self.builder.get_object('cam%d'%idx)
+            if but:
+                but.connect('clicked', self.pip_cam_sel, idx)
+
 
         app.live_sink.set_window_handle(live.get_property('window').get_xid())
 
@@ -119,6 +139,28 @@ class MainWindow(object):
             else:
                 self.app.audio_inserts[0].set_device(device)
         self.app.set_audio_source(source)
+
+    def pip(self, widget, pos):
+        try:
+            self.app.mixer.start_pip(self.app.inputs[self._pip_idx], pos)
+        except IndexError:
+            but = self.builder.get_object('cam%d'%self._pip_idx)
+            if but:
+                but.set_active(False)
+            self._pip_idx = -1
+
+    def pip_stop(self, widget):
+        for input in app.inputs:
+            self.app.mixer.stop_pip(input)
+
+    def pip_cam_sel(self, widget, idx):
+        if widget.get_active():
+            self._pip_idx = idx
+        else:
+            try:
+                self.app.mixer.stop_pip(self.app.inputs[idx])
+            except IndexError:
+                pass
 
     def auto_click_cb (self, widget):
         self.app.set_automatic(widget.get_active())
