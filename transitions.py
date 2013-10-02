@@ -63,6 +63,8 @@ class VideoMixerTransition(BaseTransition):
     def __init__(self, *args):
         BaseTransition.__init__(self)
 
+        self.pip_pads = []
+
         self.mixer = Gst.ElementFactory.make('videomixer', 'VideoMixerTransition videomixer')
         self.mixer.set_property('background', 'black')
 
@@ -100,14 +102,19 @@ class VideoMixerTransition(BaseTransition):
             previous_pad = self.get_mixerpad_for_source(self.current_input)
 
         current_pad = self.get_mixerpad_for_source(source)
+        # probably it would be better if we just turn of PiP for the source.
+        if current_pad in self.pip_pads:
+            return
+
         for pad in mixer.sinkpads:
+            if pad in self.pip_pads:
+                continue
             if pad is current_pad:
                 continue
 
             if pad is not previous_pad:
                 self._reset_pad(pad, {'alpha':0})
-            else:
-                pad.set_property('zorder', self.FG_PREV_LAYER)
+            pad.set_property('zorder', self.FG_PREV_LAYER)
 
         if current_pad:
             current_pad.set_property('zorder', self.FG_CUR_LAYER)
@@ -126,6 +133,56 @@ class VideoMixerTransition(BaseTransition):
             self.current_input = source
             logging.info('VideoMixerTransition: set active input by source ok using %s', transition)
             return source
+
+    def start_pip(self, source, position="LR", *args, **kwargs):
+        position = position.upper().strip()
+        # Top Center Bottom, Left Right
+        if position not in "TR CR BR TL CL BL TC CC BC".split():
+            position = "BR"
+
+        pad = self.get_mixerpad_for_source(source)
+        logging.debug('START PiP, SOURCE: %s, PAD: %s, POS: %s', source, pad, position)
+        if pad is None:
+            return
+
+        if pad not in self.pip_pads:
+            self.pip_pads.append(pad)
+            self._reset_pad(pad, {'alpha':0, 'zorder':self.PIP_LAYER})
+            source.set_geometry(VIDEO_WIDTH/3, VIDEO_HEIGHT/3)
+            if source is self.current_input:
+                self.current_input = None
+
+        y,x = position
+
+        xpos = {
+            'L': 0,
+            'C': VIDEO_WIDTH/3,
+            'R': 2*VIDEO_WIDTH/3,
+        }[x]
+
+        ypos = {
+            'T': 0,
+            'C': VIDEO_HEIGHT/3,
+            'B': 2*VIDEO_HEIGHT/3,
+        }[y]
+
+        self._reset_pad(pad, {'alpha':0, 'xpos':xpos, 'ypos':ypos})
+        self._reset_pad(pad, {'alpha':1})
+        logging.debug('START PiP, xpos: %i, ypos: %i', xpos, ypos)
+
+    def stop_pip(self, source):
+        pad = self.get_mixerpad_for_source(source)
+        if pad is None:
+            return
+
+        if pad not in self.pip_pads:
+            return
+
+        # back to original size
+        source.set_geometry()
+        self._reset_pad(pad, {'alpha':1, 'xpos':0, 'ypos':0})
+        self.pip_pads.remove(pad)
+        self.current_input = source
 
     def _get_control_source(self, elem, prop='alpha'):
         ctrl = elem.get_control_binding(prop)
