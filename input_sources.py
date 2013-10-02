@@ -132,7 +132,7 @@ class BaseInput(BaseArchivable):
             return True
 
 class C920Input(BaseInput):
-    def __init__(self, video_props, audio_props, name=None):
+    def __init__(self, video_props, audio_props, name=None, serial='', *args, **kwargs):
         BaseInput.__init__(self)
         if name:
             self.set_property('name', name)
@@ -281,7 +281,7 @@ def C920Probe(device, context):
     if adev and vdev:
         vprops = {'device': vdev}
         aprops = {'device': 'hw:CARD=%s' % adev}
-        return (C920Input, {'video_props':vprops, 'audio_props':aprops})
+        return (C920Input, {'video_props':vprops, 'audio_props':aprops, 'serial':device['ID_SERIAL']})
 
     return False
 
