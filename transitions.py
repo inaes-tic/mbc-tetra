@@ -168,6 +168,15 @@ class VideoMixerTransition(BaseTransition):
 
         self._reset_pad(pad, {'alpha':0, 'xpos':xpos, 'ypos':ypos})
         self._reset_pad(pad, {'alpha':1})
+
+        curpad = self.get_mixerpad_for_source(self.current_input)
+        for opad in self.mixer.sinkpads:
+            if opad not in self.pip_pads:
+                if opad is curpad:
+                    opad.set_property('zorder', self.FG_CUR_LAYER)
+                else:
+                    opad.set_property('zorder', self.FG_PREV_LAYER)
+
         logging.debug('START PiP, xpos: %i, ypos: %i', xpos, ypos)
 
     def stop_pip(self, source):
@@ -180,7 +189,7 @@ class VideoMixerTransition(BaseTransition):
 
         # back to original size
         source.set_geometry()
-        self._reset_pad(pad, {'alpha':1, 'xpos':0, 'ypos':0})
+        self._reset_pad(pad, {'alpha':1, 'xpos':0, 'ypos':0, 'zorder': self.FG_CUR_LAYER})
         self.pip_pads.remove(pad)
         self.current_input = source
 
