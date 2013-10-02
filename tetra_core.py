@@ -125,8 +125,8 @@ class TetraApp(GObject.GObject):
     def add_output_sink(self, sink):
         self.pipeline.add(sink)
         self.outputs.append(sink)
-        self.vsink.link(sink)
-        self.asink.link_filtered(sink, AUDIO_CAPS)
+        self.vsink.link_pads('src_%u', sink, 'videosink')
+        self.asink.link_pads('src_%u', sink, 'audiosink')
 
         sink.initialize()
         sink.connect('ready-to-record', self._start_record_ok)
@@ -141,8 +141,8 @@ class TetraApp(GObject.GObject):
         self.pipeline.add(source)
         self.inputs.append(source)
 
-        source.link(self.amixer)
-        source.link(self.inputsel)
+        source.link_pads('videosrc', self.inputsel, 'sink_%u')
+        source.link_pads_filtered('audiosrc', self.amixer, 'sink_%u', AUDIO_CAPS)
 
         self.preview_sinks.append(source.xvsink)
         self.volumes.append(source.volume)
@@ -553,6 +553,7 @@ class TetraApp(GObject.GObject):
         def log_error():
             logging.error('Gst msg ERORR src: %s msg: %s', msg.src, msg.parse_error())
             logging.debug('Gst msg ERROR CURRENT STATE %s', self.pipeline.get_state(0))
+            Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_core_error')
 
         if msg.type == Gst.MessageType.CLOCK_LOST:
             self.pipeline.set_state (Gst.State.PAUSED)
