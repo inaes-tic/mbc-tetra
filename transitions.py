@@ -56,6 +56,10 @@ class InputSelectorTransition(BaseTransition):
                 return source
 
 class VideoMixerTransition(BaseTransition):
+    PIP_LAYER = 10
+    BG_LAYER = 0
+    FG_CUR_LAYER = 3
+    FG_PREV_LAYER = 2
     def __init__(self, *args):
         BaseTransition.__init__(self)
 
@@ -89,30 +93,29 @@ class VideoMixerTransition(BaseTransition):
             transition = False
 
         mixer = self.mixer
-        old_pads = []
         current_pad = None
         previous_pad = None
 
         if self.current_input:
             previous_pad = self.get_mixerpad_for_source(self.current_input)
 
-        peers = [pad.get_peer() for pad in source.pads]
+        current_pad = self.get_mixerpad_for_source(source)
         for pad in mixer.sinkpads:
-            if pad in peers:
-                current_pad = pad
-                pad.set_property('zorder', 2)
+            if pad is current_pad:
+                continue
+
+            if pad is not previous_pad:
+                self._reset_pad(pad, {'alpha':0})
             else:
-                old_pads.append(pad)
-                if pad is not previous_pad:
-                    self._reset_pad(pad, {'alpha':0, 'zorder':3})
-                else:
-                    self._reset_pad(pad, {'zorder':3})
+                pad.set_property('zorder', self.FG_PREV_LAYER)
+
         if current_pad:
+            current_pad.set_property('zorder', self.FG_CUR_LAYER)
             if previous_pad is None:
-                self._reset_pad(current_pad, {'alpha':1, 'zorder':2, 'xpos':0, 'ypos':0})
+                self._reset_pad(current_pad, {'alpha':1, 'xpos':0, 'ypos':0})
                 logging.debug('VideoMixerTransition: previous_pad is None')
             elif previous_pad is current_pad:
-                self._reset_pad(current_pad, {'alpha':1, 'zorder':2, 'xpos':0, 'ypos':0})
+                self._reset_pad(current_pad, {'alpha':1, 'xpos':0, 'ypos':0})
                 logging.debug('VideoMixerTransition: previous_pad is current_pad')
             else:
                 if transition:
@@ -146,8 +149,8 @@ class VideoMixerTransition(BaseTransition):
         now = self.mixer.get_clock().get_time() # XXX: you better check for errors
         end = now + duration*Gst.SECOND
 
-        self._reset_pad(old_pad, {'xpos':0, 'ypos':0, 'zorder':3})
-        self._reset_pad(new_pad, {'xpos':0, 'ypos':0})
+        self._reset_pad(old_pad, {'xpos':0, 'ypos':0, 'zorder': self.FG_PREV_LAYER})
+        self._reset_pad(new_pad, {'xpos':0, 'ypos':0, 'zorder': self.FG_CUR_LAYER})
 
         new_alpha = self._get_control_source(new_pad)
         old_alpha = self._get_control_source(old_pad)
@@ -158,8 +161,8 @@ class VideoMixerTransition(BaseTransition):
         old_alpha.set(end, 0)
 
     def fast_switch(self, old_pad, new_pad, duration=None):
-        self._reset_pad(old_pad, {'alpha':0, 'zorder':3, 'xpos':0, 'ypos':0})
-        self._reset_pad(new_pad, {'alpha':1, 'zorder':2, 'xpos':0, 'ypos':0})
+        self._reset_pad(old_pad, {'alpha':0, 'xpos':0, 'ypos':0})
+        self._reset_pad(new_pad, {'alpha':1, 'xpos':0, 'ypos':0})
         logging.debug('VideoMixerTransition: do fast_switch')
 
     def horiz_slide(self, old_pad, new_pad, direction="LR", duration=0.25):
