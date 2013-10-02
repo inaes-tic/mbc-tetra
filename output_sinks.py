@@ -85,7 +85,8 @@ class BaseOutput(Gst.Bin):
         aq.link(aenc)
         if apar:
             aenc.link(apar)
-            apar.link(aenct)
+            caps = Gst.Caps.from_string('audio/mpeg,mpegversion=4,framed=true')
+            apar.link_filtered(aenct, caps)
         else:
             aenc.link(aenct)
         aenct.link(vmuxaiq)
@@ -238,11 +239,13 @@ class BaseH264Output(BaseOutput):
 
     def _build_audio_encoder(self, *args):
         conf = self.conf
-        aenc = Gst.ElementFactory.make('avenc_aac', None)
+        aenc = Gst.ElementFactory.make('faac', None)
         aenc.set_property('bitrate', conf.setdefault('audio_bitrate', 192000))
         return aenc
 
     def _build_audio_parser(self, *args):
+        # XXX FIXME: recent version of Gstremer now require a parser
+        # but on older it fails, so?
         parser = Gst.ElementFactory.make ('aacparse', None)
         return parser
 
