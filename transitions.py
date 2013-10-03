@@ -45,6 +45,15 @@ class InputSelectorTransition(BaseTransition):
 
         self.mixer = Gst.ElementFactory.make('input-selector', 'InputSelectorTransition input-selector')
 
+    def _link_source(self, source):
+        return source.link_pads('videosrc', self.mixer, 'sink_%u')
+
+    def add_input_source(self, source):
+        return self._link_source(source)
+
+    def add_background_source(self, source):
+        return self._link_source(source)
+
     def set_active_input_by_source(self, source, *args, **kwargs):
         peers = [pad.get_peer() for pad in source.pads]
 
