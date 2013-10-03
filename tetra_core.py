@@ -145,7 +145,7 @@ class TetraApp(GObject.GObject):
         self.pipeline.add(source)
         self.inputs.append(source)
 
-        source.link_pads('videosrc', self.inputsel, 'sink_%u')
+        self.mixer.add_input_source(source)
         source.link_pads('audiosrc', self.amixer, 'sink_%u')
 
         if source.xvsink:
@@ -172,7 +172,7 @@ class TetraApp(GObject.GObject):
         self.pipeline.add(source)
         self.backgrounds.append(source)
 
-        source.link_pads('videosrc', self.inputsel, 'sink_%u')
+        self.mixer.add_background_source(source)
         source.link_pads('audiosrc', self.amixer, 'sink_%u')
 
         self.preview_sinks.append(source.xvsink)
