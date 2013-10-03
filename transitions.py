@@ -24,6 +24,12 @@ class BaseTransition(GObject.Object):
         GObject.GObject.__init__(self)
         self.current_input = None
 
+    def add_input_source(self, source):
+        raise NotImplemented
+
+    def add_background_source(self, source):
+        raise NotImplemented
+
     def set_active_input_by_source(self, source, *args, **kwargs):
         raise NotImplemented
 
@@ -64,6 +70,8 @@ class VideoMixerTransition(BaseTransition):
         BaseTransition.__init__(self)
 
         self.pip_pads = []
+        self.inputs = []
+        self.backgrounds = []
 
         self.mixer = Gst.ElementFactory.make('videomixer', 'VideoMixerTransition videomixer')
         self.mixer.set_property('background', 'black')
@@ -76,6 +84,21 @@ class VideoMixerTransition(BaseTransition):
             'slide_lr': self.slide_lr,
             'slide_rl': self.slide_rl,
         }
+
+    def _link_source(self, source):
+        return source.link_pads('videosrc', self.mixer, 'sink_%u')
+
+    def add_input_source(self, source):
+        if self._link_source(source):
+            self.inputs.append(source)
+            pad = self.get_mixerpad_for_source(source)
+            self._reset_pad(pad, {'zorder': self.FG_CUR_LAYER})
+
+    def add_background_source(self, source):
+        if self._link_source(source):
+            self.backgrounds.append(source)
+            pad = self.get_mixerpad_for_source(source)
+            self._reset_pad(pad, {'zorder': self.BG_LAYER})
 
     def get_mixerpad_for_source(self, source):
         mixerpad = None
@@ -110,6 +133,8 @@ class VideoMixerTransition(BaseTransition):
             if pad in self.pip_pads:
                 continue
             if pad is current_pad:
+                continue
+            if pad.get_peer().get_parent() in self.backgrounds:
                 continue
 
             if pad is not previous_pad:
@@ -149,7 +174,14 @@ class VideoMixerTransition(BaseTransition):
             self.pip_pads.append(pad)
             self._reset_pad(pad, {'alpha':0, 'zorder':self.PIP_LAYER})
             source.set_geometry(VIDEO_WIDTH/3, VIDEO_HEIGHT/3)
-            if source is self.current_input:
+        if source is self.current_input:
+            if not self.backgrounds:
+                idx = self.inputs.index(source)
+                if idx:
+                    self.set_active_input_by_source(self.inputs[idx-1])
+                else:
+                    self.current_input = None
+            else:
                 self.current_input = None
 
         y,x = position
