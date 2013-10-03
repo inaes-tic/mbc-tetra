@@ -58,9 +58,9 @@ class MainWindow(object):
         self.sound_mix.connect('set-mix-source', self.insert_sel_cb)
         self.insert_sel_cb(self.sound_mix, None)
 
-        self.main_box.add(self.pipmgr)
+        self.main_box.pack_end(self.pipmgr, False, False, 0)
         self.master_monitor = MasterMonitor()
-        self.main_box.add(self.master_monitor)
+        self.main_box.pack_end(self.master_monitor, False, False, 0)
 
         self.sliders = []
         self.bars = []
