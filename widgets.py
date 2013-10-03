@@ -4,6 +4,7 @@ import logging
 
 import sys
 import time
+from collections import deque
 
 import gi
 
@@ -243,6 +244,133 @@ class MasterMonitor(Gtk.Box):
 
     def __slider_cb(self, widget, value, *data):
         self.emit('volume', value)
+
+
+class PipManager(Gtk.Box):
+    __gsignals__ = {
+        # camera idx, -1 for all.
+        "switch": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+        "pip-off": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+        # camera idx, position.
+        "pip-start": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT]),
+
+    }
+    def __init__(self, *args, **kwargs):
+        Gtk.Box.__init__(self)
+        builder = Gtk.Builder ()
+        self.builder = builder
+
+        builder.add_objects_from_file (config.get('pip_ui','pipmgr.ui'), ['PipManager'])
+        mgr = builder.get_object('PipManager')
+        self.add(mgr)
+
+        self._pip_idx = -1
+        self.input_buffer = deque()
+        self.state = 'switch'
+        self.states = {
+            'pip': self.pip,
+            'pip_sel_cam': self.pip_sel_cam,
+            'switch': self.switch,
+        }
+
+        for name in "TR CR BR TL CL BL TC CC BC".split():
+            but = self.builder.get_object(name)
+            if but:
+                but.connect('clicked', self.pip_pos_but, name)
+        for idx in range(3):
+            but = self.builder.get_object('cam%d'%idx)
+            if but:
+                but.connect('clicked', self.pip_cam_but, idx)
+
+        but = self.builder.get_object('clear_pip')
+        but.connect('clicked', self.pip_stop_but)
+
+    def pip_cam_but(self, widget, idx):
+        if widget.get_active():
+            self._pip_idx = idx
+        else:
+            self.emit('pip-off', idx)
+            self._pip_idx = -1
+
+    def pip_pos_but(self, widget, pos):
+        if self._pip_idx != -1:
+            self.emit('pip-start', self._pip_idx, pos)
+
+    def _reset_cam_button(self, idx):
+        but = self.builder.get_object('cam%d'%idx)
+        if but:
+            but.set_active(False)
+
+    def pip_stop_but(self, widget):
+        self.emit('pip-off', -1)
+        for idx in range(3):
+            self._reset_cam_button(idx)
+
+    def on_keypress (self, widget, event):
+        key = event.string
+        if key:
+            self.push_key(key)
+        return True
+
+    def clear_buffer(self):
+        self.input_buffer.clear()
+
+    def push_key(self, key):
+        if key == chr(27):
+            self.state = 'switch'
+            self.clear_buffer()
+            return
+        self.input_buffer.append(key)
+        next_state = self.states[self.state](key)
+        if next_state:
+            self.state = next_state
+
+    def switch(self, key):
+        values = "1234567890"
+
+        key = key.lower()
+        if key in values:
+            self.emit('switch', values.index(key))
+        elif key in "p":
+            return 'pip'
+
+        self.clear_buffer()
+        return
+
+    def pip(self, key):
+        values = "1234567890"
+        actions = "o"
+
+        key = key.lower()
+        if key in values:
+            return 'pip_sel_cam'
+        elif key in actions:
+            self.emit('pip-off', -1)
+
+        self.clear_buffer()
+        return 'switch'
+
+    def pip_sel_cam(self, key):
+        positions = {
+            'q': 'TL', 'w': 'TC', 'e': 'TR',
+            'a': 'CL', 's': 'CC', 'd': 'CR',
+            'z': 'BL', 'x': 'BC', 'c': 'BR',
+        }
+        actions = "o"
+
+        key = key.lower()
+        self.input_buffer.pop()
+        idx = int(self.input_buffer.pop()) - 1
+        if key in positions:
+            self.emit('pip-start', idx, positions[key])
+        elif key in actions:
+            self._reset_cam_button(idx)
+            self.emit('pip-off', idx)
+
+        self.clear_buffer()
+        return 'switch'
+
+GObject.type_register(PipManager)
 
 
 if __name__ == '__main__':

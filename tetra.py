@@ -27,20 +27,24 @@ import config
 from common import *
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
-from widgets import SoundMixWidget, PreviewWidget, MasterMonitor
+from widgets import SoundMixWidget, PreviewWidget, MasterMonitor, PipManager
 import input_sources
 
 class MainWindow(object):
     def __init__(self, app):
         self.app = app
         self.imon = input_sources.InputMonitor()
-        self._pip_idx = -1
+        self.pipmgr = PipManager()
+        self.pipmgr.connect('switch', self.switch_cam)
+        self.pipmgr.connect('pip-start', self.pip_start)
+        self.pipmgr.connect('pip-off', self.pip_off)
 
         self.builder = Gtk.Builder ()
         self.builder.add_from_file (config.get('main_ui', 'main_ui_2.ui'))
 
         self.window = self.builder.get_object('tetra_main')
         self.window.connect ("destroy", lambda app: Gtk.main_quit())
+        self.window.connect ("key-press-event", self.pipmgr.on_keypress)
         self.window.fullscreen ()
 
         self.preview_box = self.builder.get_object('PreviewBox')
@@ -54,6 +58,7 @@ class MainWindow(object):
         self.sound_mix.connect('set-mix-source', self.insert_sel_cb)
         self.insert_sel_cb(self.sound_mix, None)
 
+        self.main_box.add(self.pipmgr)
         self.master_monitor = MasterMonitor()
         self.main_box.add(self.master_monitor)
 
@@ -83,19 +88,6 @@ class MainWindow(object):
         self.builder.get_object('rec_start').connect('clicked', rec_start)
         self.builder.get_object('rec_stop').connect('clicked', rec_stop)
 
-        but = self.builder.get_object('clear_pip')
-        but.connect('clicked', self.pip_stop)
-
-        for name in "TR CR BR TL CL BL TC CC BC".split():
-            but = self.builder.get_object(name)
-            if but:
-                but.connect('clicked', self.pip, name)
-        for idx in range(3):
-            but = self.builder.get_object('cam%d'%idx)
-            if but:
-                but.connect('clicked', self.pip_cam_sel, idx)
-
-
         app.live_sink.set_window_handle(live.get_property('window').get_xid())
 
         app.connect('level', self.update_levels)
@@ -105,6 +97,12 @@ class MainWindow(object):
         self.imon.connect('added', self.source_added_cb)
         self.imon.start()
 
+
+    def on_keypress (self, widget, event):
+        key = event.string
+        if not key:
+            return
+        self.kbm.push_key(key)
 
     def source_added_cb(self, imon, src, props):
         source = src(**props)
@@ -138,27 +136,30 @@ class MainWindow(object):
                 self.app.audio_inserts[0].set_device(device)
         self.app.set_audio_source(source)
 
-    def pip(self, widget, pos):
-        try:
-            self.app.mixer.start_pip(self.app.inputs[self._pip_idx], pos)
-        except IndexError:
-            but = self.builder.get_object('cam%d'%self._pip_idx)
-            if but:
-                but.set_active(False)
-            self._pip_idx = -1
-
-    def pip_stop(self, widget):
-        for input in app.inputs:
-            self.app.mixer.stop_pip(input)
-
-    def pip_cam_sel(self, widget, idx):
-        if widget.get_active():
-            self._pip_idx = idx
+    def pip_off(self, widget, idx):
+        logging.debug('PiP off %d', idx)
+        if idx == -1:
+            for input in app.inputs:
+                self.app.mixer.stop_pip(input)
         else:
             try:
                 self.app.mixer.stop_pip(self.app.inputs[idx])
             except IndexError:
                 pass
+
+    def pip_start(self, widget, idx, pos):
+        logging.debug('PiP start %d %s', idx, pos)
+        try:
+            self.app.mixer.start_pip(self.app.inputs[idx], pos)
+        except IndexError:
+            pass
+
+    def switch_cam(self, widget, idx):
+        logging.debug('Switch cam %d', idx)
+        try:
+            self.app.set_active_input_by_source(self.app.inputs[idx])
+        except IndexError:
+            pass
 
     def auto_click_cb (self, widget):
         self.app.set_automatic(widget.get_active())
