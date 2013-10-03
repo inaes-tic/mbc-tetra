@@ -324,7 +324,7 @@ GObject.type_register(C920Input)
 
 def C920Probe(device, context):
     model = device.get('ID_MODEL', None)
-    if model != u'HD_Pro_Webcam_C920':
+    if model not in  [u'HD_Pro_Webcam_C920', u'0821']:
         return False
 
     vdev = device.get('DEVNAME', None)
