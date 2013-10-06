@@ -117,13 +117,9 @@ class MuxedFileWriter(BaseBin):
     _elem_type = 'sink'
 
     def __init__(self, mux, name=None, location='/dev/null', append=True, pad_names=None):
-        Gst.Bin.__init__(self)
+        BaseBin.__init__(self)
         if name:
             self.set_property('name', name)
-
-        self._on_unlink = False
-        self._on_unlink_lck = threading.Lock()
-        self._probes = {}
 
         q = Gst.ElementFactory.make('queue2', None)
 
