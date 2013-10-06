@@ -591,7 +591,7 @@ class TetraApp(GObject.GObject):
                     if self.backgrounds:
                         source = self.backgrounds[0]
                         self.set_active_input_by_source(source, transition=False)
-                parent.disconnect_source()
+                parent.disconnect_element()
                 log_error()
                 self._remove_lck.release()
 

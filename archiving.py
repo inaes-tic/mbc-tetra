@@ -2,6 +2,7 @@
 
 import logging
 
+import threading
 import time
 import sys
 import os
@@ -22,9 +23,10 @@ if not Gst.is_initialized():
     Gst.init(sys.argv)
 
 from common import *
+from gstcommon import BaseBin
 import config
 
-class BaseArchivable(Gst.Bin):
+class BaseArchivable(BaseBin):
     __gsignals__ = {
        "ready-to-record": (GObject.SIGNAL_RUN_FIRST, None, []),
        "record-stopped": (GObject.SIGNAL_RUN_FIRST, None, []),
@@ -32,9 +34,10 @@ class BaseArchivable(Gst.Bin):
     filename_suffix = ''
     _mux_pad_names = None
     _filename_template = None
+    _elem_type = 'sink'
 
     def __init__(self):
-        Gst.Bin.__init__(self)
+        BaseBin.__init__(self)
         self._stream_writer_sources = []
         self.stream_writer = None
 
@@ -82,13 +85,13 @@ class BaseArchivable(Gst.Bin):
             if not mux:
                 return False
             sw = MuxedFileWriter(mux, location=location, pad_names=self._mux_pad_names)
-            sw.connect('stopped', sw_stopped_cb)
+            sw.connect('removed', sw_stopped_cb)
             self.stream_writer = sw
             self.add(sw)
 
             for src in self._stream_writer_sources:
-                src.link(sw)
-            sw.set_state(self.get_state(0)[1])
+                logging.debug('STREAM WRITER LINK ok?: %s', src.link(sw))
+            sw.sync_state_with_parent()
             return True
 
         if self.stream_writer is None:
@@ -104,15 +107,20 @@ class BaseArchivable(Gst.Bin):
         return True
 
 
-class MuxedFileWriter(Gst.Bin):
+class MuxedFileWriter(BaseBin):
     __gsignals__ = {
        "stopped": (GObject.SIGNAL_RUN_FIRST, None, []),
     }
+    _elem_type = 'sink'
+
     def __init__(self, mux, name=None, location='/dev/null', append=True, pad_names=None):
         Gst.Bin.__init__(self)
         if name:
             self.set_property('name', name)
 
+        self._on_unlink = False
+        self._on_unlink_lck = threading.Lock()
+        self._probes = {}
 
         q = Gst.ElementFactory.make('queue2', None)
 
@@ -137,47 +145,8 @@ class MuxedFileWriter(Gst.Bin):
             gpad = Gst.GhostPad.new(None, pad)
             self.add_pad(gpad)
 
-    def __set_to_null_and_stop(self):
-        self.set_state(Gst.State.NULL)
-        for pad in self.pads:
-            peer = pad.get_peer()
-            if peer is not None:
-                logging.debug('UNLINK PAD %s', pad)
-                # we are a sink, so the roles of pad and peer are reversed
-                # with respect to the same block in input_sources.py
-                peer.unlink(pad)
-### In our case peer is a queue's src, so this path should not be taken.
-### Yet uncommenting it releases demons.
-###                parent = peer.get_parent()
-###
-###                presence = None
-###                tmpl = peer.get_pad_template()
-###                if tmpl:
-###                    presence = tmpl.presence
-###                if parent and (presence == Gst.PadPresence.REQUEST):
-###                    logging.debug('BEFORE PAD PARENT RELEASE PAD')
-###                    parent.release_request_pad(peer)
-###                    logging.debug('PAD PARENT RELEASE PAD OK')
-        self.emit('stopped')
-
     def stop(self, *args):
-        probes = []
-        pads = self.pads
-
-        def pad_block_cb(pad, probe_info, *data):
-            ok = True
-            for pad in pads:
-                if pad.is_blocked() == False:
-                    ok = False
-            if ok:
-                GLib.timeout_add(0, self.__set_to_null_and_stop)
-            return Gst.PadProbeReturn.REMOVE
-
-        for pad in pads:
-            probes.append( [pad, pad.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM | Gst.PadProbeType.BLOCK_UPSTREAM, pad_block_cb, None)] )
-
-        if self.get_state(0)[1] != Gst.State.PLAYING:
-            GLib.timeout_add(0, self.__set_to_null_and_stop)
+        self.disconnect_element()
 
 class StreamWriter(Gst.Bin):
     def __init__(self, name=None, location='/dev/null', append=False):

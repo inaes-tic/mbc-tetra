@@ -27,6 +27,7 @@ import config
 
 class BaseOutput(BaseArchivable):
     config_section = None
+    _elem_type = 'sink'
     def __init__(self):
         BaseArchivable.__init__(self)
 
@@ -109,9 +110,6 @@ class BaseOutput(BaseArchivable):
 
         self.add_pad(vgpad)
         self.add_pad(agpad)
-
-    def __contains__ (self, item):
-        return item in self.children
 
     def initialize(self):
         pass
