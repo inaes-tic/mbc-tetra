@@ -135,51 +135,45 @@ class TetraApp(GObject.GObject):
         sink.connect('record-stopped', self._record_stopped)
         sink.sync_state_with_parent()
 
-    def add_input_source(self, source):
+    def _add_source(self, source, type='input', *args, **kwargs):
         source.connect('ready-to-record', self._start_record_ok)
         source.connect('record-stopped', self._record_stopped)
-        self.audio_avg[source] = deque (maxlen=WINDOW_LENGTH * 10)
-        self.audio_peak[source] = deque (maxlen=WINDOW_LENGTH * 10)
 
         self.pipeline.add(source)
-        self.inputs.append(source)
-
-        self.mixer.add_input_source(source)
         source.link_pads('audiosrc', self.amixer, 'sink_%u')
+
+        if type=='input':
+            self.audio_avg[source] = deque (maxlen=WINDOW_LENGTH * 10)
+            self.audio_peak[source] = deque (maxlen=WINDOW_LENGTH * 10)
+            self.inputs.append(source)
+            self.volumes.append(source.volume)
+            self.levels.append(source.level)
+
+            self.mixer.add_input_source(source)
+            self.current_source = source
+
+        elif type=='background':
+            self.backgrounds.append(source)
+            self.mixer.add_background_source(source)
 
         if source.xvsink:
             self.preview_sinks.append(source.xvsink)
-        self.volumes.append(source.volume)
-        self.levels.append(source.level)
-
         source.initialize()
-        self.current_source = source
-        logging.debug('ADD INPUT SOURCE , PIPE STATE: %s', self.pipeline.get_state(0))
-        logging.debug('ADD INPUT SOURCE, SYNC WITH PARENT: %s', source.sync_state_with_parent())
-        #self.set_active_input_by_source(source, transition=False)
+
+        logging.debug('ADD %s SOURCE , PIPE STATE: %s', type, self.pipeline.get_state(0))
+        logging.debug('ADD %s SOURCE, SYNC WITH PARENT: %s', type, source.sync_state_with_parent())
         if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
             if len(self.inputs)>1 or self.backgrounds:
                 self.pipeline.set_state(Gst.State.PLAYING)
             else:
                 self.start()
         self.pipeline.recalculate_latency()
-        GLib.idle_add(self._set_xvsync)
+
+    def add_input_source(self, source):
+        self._add_source(source, type='input')
 
     def add_background_source(self, source, xpos=0, ypos=0):
-
-        self.pipeline.add(source)
-        self.backgrounds.append(source)
-
-        self.mixer.add_background_source(source)
-        source.link_pads('audiosrc', self.amixer, 'sink_%u')
-
-        self.preview_sinks.append(source.xvsink)
-
-        source.initialize()
-        source.sync_state_with_parent()
-        self.pipeline.recalculate_latency()
-
-        GLib.idle_add(self._set_xvsync)
+        self._add_source(source, type='background')
 
     def add_audio_insert(self, source):
         self.pipeline.add(source)
