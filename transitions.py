@@ -151,7 +151,11 @@ class VideoMixerTransition(BaseTransition):
             pad.set_property('zorder', self.FG_PREV_LAYER)
 
         if current_pad:
-            current_pad.set_property('zorder', self.FG_CUR_LAYER)
+            if source in self.backgrounds:
+                current_pad.set_property('zorder', self.BG_LAYER)
+            else:
+                current_pad.set_property('zorder', self.FG_CUR_LAYER)
+
             if previous_pad is None:
                 self._reset_pad(current_pad, {'alpha':1, 'xpos':0, 'ypos':0})
                 logging.debug('VideoMixerTransition: previous_pad is None')
