@@ -136,7 +136,6 @@ class TetraApp(GObject.GObject):
         sink.sync_state_with_parent()
 
     def add_input_source(self, source):
-        source.connect('removed', self.source_removed_cb)
         source.connect('ready-to-record', self._start_record_ok)
         source.connect('record-stopped', self._record_stopped)
         self.audio_avg[source] = deque (maxlen=WINDOW_LENGTH * 10)
@@ -167,7 +166,6 @@ class TetraApp(GObject.GObject):
         GLib.idle_add(self._set_xvsync)
 
     def add_background_source(self, source, xpos=0, ypos=0):
-        source.connect('removed', self.source_removed_cb)
 
         self.pipeline.add(source)
         self.backgrounds.append(source)
@@ -566,6 +564,12 @@ class TetraApp(GObject.GObject):
             return True
 
         s = msg.get_structure()
+        if s.get_name() == "ready-to-unlink":
+            msg.src.do_unlink()
+
+        if s.get_name() == "unlinked":
+            self.source_removed_cb(msg.src)
+
         if s.get_name() == "level":
             parent = msg.src.get_parent()
             arms = s.get_value('rms')
@@ -610,7 +614,7 @@ class TetraApp(GObject.GObject):
                     if self.backgrounds:
                         source = self.backgrounds[0]
                         self.set_active_input_by_source(source, transition=False)
-                GLib.timeout_add(10, parent.disconnect_source)
+                parent.disconnect_source()
                 log_error()
                 self._remove_lck.release()
 
