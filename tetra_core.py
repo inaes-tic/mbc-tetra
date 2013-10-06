@@ -341,11 +341,14 @@ class TetraApp(GObject.GObject):
         self._rec_ok_cnt = 0
 
         self.pipeline.set_state(Gst.State.READY)
+
+        now = time.localtime()
+        now = time.strftime("%Y-%m-%d-%H:%M:%S", now)
         for out in self.outputs:
-            if out.start_file_recording():
+            if out.start_file_recording(timestamp=now):
                 self._rec_ok_cnt += 1
         for inp in self.inputs:
-            if inp.start_file_recording():
+            if inp.start_file_recording(timestamp=now):
                 self._rec_ok_cnt += 1
 
         # no sink or source was able to start recording
