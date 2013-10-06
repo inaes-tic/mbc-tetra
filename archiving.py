@@ -141,7 +141,10 @@ class MuxedFileWriter(BaseBin):
         if pad_names is None:
             pad_names = ['video_%u', 'audio_%u']
         for name in pad_names:
-            pad = mux.get_request_pad(name)
+            q = Gst.ElementFactory.make('queue2', None)
+            self.add(q)
+            q.link_pads('src', mux, name)
+            pad = q.get_static_pad('sink')
             gpad = Gst.GhostPad.new(None, pad)
             self.add_pad(gpad)
 

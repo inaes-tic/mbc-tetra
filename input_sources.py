@@ -152,8 +152,6 @@ class C920Input(BaseInput):
         dec = Gst.ElementFactory.make ('jpegdec', None)
         q1 = Gst.ElementFactory.make ('queue2', None)
         q2 = Gst.ElementFactory.make ('queue2', None)
-        streamvq = Gst.ElementFactory.make('queue', 'video archive q')
-        streamvq.set_property('silent', True)
         streamvt = Gst.ElementFactory.make ('tee', None)
         vconv = Gst.ElementFactory.make ('videoconvert', None)
         vscale = Gst.ElementFactory.make ('videoscale', None)
@@ -165,7 +163,7 @@ class C920Input(BaseInput):
         self.vsrc = src
         self.vcaps = vcaps
 
-        for el in (src, sink, q0, q1, q2, streamvq, streamvt, tee, parse, dec, vconv, vscale, vcaps):
+        for el in (src, sink, q0, q1, q2, streamvt, tee, parse, dec, vconv, vscale, vcaps):
             self.add(el)
 
         if props:
@@ -177,7 +175,6 @@ class C920Input(BaseInput):
         src.link(q0)
         q0.link_filtered(streamvt, VIDEO_CAPS)
         streamvt.link_filtered(parse, VIDEO_CAPS)
-        streamvt.link(streamvq)
         parse.link(dec)
         dec.link(tee)
         tee.link(q1)
@@ -188,7 +185,7 @@ class C920Input(BaseInput):
         vscale.link(vcaps)
         self.vsink = vcaps
 
-        self.add_stream_writer_source(streamvq)
+        self.add_stream_writer_source(streamvt)
 
     def __add_audio_source (self, props):
         props.update(AUDIO_PROPS)
@@ -199,8 +196,6 @@ class C920Input(BaseInput):
         q1 = Gst.ElementFactory.make ('queue2', None)
         q2 = Gst.ElementFactory.make ('queue2', None)
         q3 = Gst.ElementFactory.make ('queue2', None)
-        streamaq = Gst.ElementFactory.make('queue', 'audio archive q')
-        streamaq.set_property('silent', True)
         self.asink = q2
         tee = Gst.ElementFactory.make ('tee', None)
         volume = Gst.ElementFactory.make ('volume', None)
@@ -221,7 +216,7 @@ class C920Input(BaseInput):
         level.set_property ("message", True)
         self.level = level
 
-        for el in (src, q0, q1, q2, q3, streamaq, tee, volume, fasink, aconv, aconv2, ares, flt, level):
+        for el in (src, q0, q1, q2, q3, tee, volume, fasink, aconv, aconv2, ares, flt, level):
             self.add(el)
 
         if props:
@@ -233,7 +228,7 @@ class C920Input(BaseInput):
         volume.link (tee)
         tee.link (q1)
         tee.link (q3)
-        tee.link (streamaq)
+        #tee.link (streamaq)
         q3.link (aconv2)
         aconv2.link(ares)
         ares.link(q2)
@@ -242,7 +237,7 @@ class C920Input(BaseInput):
         flt.link (level)
         level.link(fasink)
 
-        self.add_stream_writer_source(streamaq)
+        self.add_stream_writer_source(tee)
 
 GObject.type_register(C920Input)
 

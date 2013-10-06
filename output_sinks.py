@@ -62,18 +62,12 @@ class BaseOutput(BaseArchivable):
         vmuxviq = Gst.ElementFactory.make('queue2', 'video mux video in q')
         vmuxaiq = Gst.ElementFactory.make('queue2', 'video mux audio in q')
 
-        streamvq = Gst.ElementFactory.make('queue', 'video archive q')
-        streamaq = Gst.ElementFactory.make('queue', 'audio archive q')
-
-        streamvq.set_property('silent', True)
-        streamaq.set_property('silent', True)
-
         aenct = Gst.ElementFactory.make('tee', 'audio enc t')
         venct = Gst.ElementFactory.make('tee', 'video enc t')
         self.aenct = aenct
         self.venct = venct
 
-        for el in [aq, vq, aenct, venct, vmuxoq, vmuxviq, vmuxaiq, streamvq, streamaq, ]:
+        for el in [aq, vq, aenct, venct, vmuxoq, vmuxviq, vmuxaiq]:
             self.add(el)
 
         aq.link(aenc)
@@ -99,11 +93,8 @@ class BaseOutput(BaseArchivable):
         vmux.link(vmuxoq)
         vmuxoq.link(sink)
 
-        venct.link(streamvq)
-        aenct.link(streamaq)
-
-        self.add_stream_writer_source(streamvq)
-        self.add_stream_writer_source(streamaq)
+        self.add_stream_writer_source(venct)
+        self.add_stream_writer_source(aenct)
 
         agpad = Gst.GhostPad.new('audiosink', aq.get_static_pad('sink'))
         vgpad = Gst.GhostPad.new('videosink', vq.get_static_pad('sink'))
