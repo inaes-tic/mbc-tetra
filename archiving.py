@@ -44,7 +44,7 @@ class BaseArchivable(BaseBin):
     def add_stream_writer_source(self, src):
         self._stream_writer_sources.append(src)
 
-    def get_record_filename(self, folder=None, name_template=None):
+    def get_record_filename(self, folder=None, name_template=None, timestamp=None):
         conf = config.get('FileArchiving', {})
         if folder is None:
             folder = conf.setdefault('folder', None)
@@ -59,8 +59,11 @@ class BaseArchivable(BaseBin):
         if not os.path.isdir(folder):
             os.makedirs(folder)
 
-        now = time.localtime()
-        now = time.strftime("%Y-%m-%d-%H:%M:%S", now)
+        if timestamp:
+            now = timestamp
+        else:
+            now = time.localtime()
+            now = time.strftime("%Y-%m-%d-%H:%M:%S", now)
 
         name = '%s-%s%s' % (name_template, now, self.filename_suffix)
         fullname = os.path.join(folder, name)
@@ -74,7 +77,7 @@ class BaseArchivable(BaseBin):
         else:
             self.emit('record-stopped')
 
-    def start_file_recording(self, location=None):
+    def start_file_recording(self, location=None, timestamp=None):
         def sw_stopped_cb(ssw):
             self.remove(ssw)
             self.stream_writer = None
@@ -95,7 +98,7 @@ class BaseArchivable(BaseBin):
             return True
 
         if self.stream_writer is None:
-            location = self.get_record_filename()
+            location = self.get_record_filename(timestamp=timestamp)
             if location and add_sw(location):
                 logging.debug('Start archiving to: %s', location)
                 self.emit('ready-to-record')
