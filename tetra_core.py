@@ -154,15 +154,15 @@ class TetraApp(GObject.GObject):
 
         source.initialize()
         self.current_source = source
+        logging.debug('ADD INPUT SOURCE , PIPE STATE: %s', self.pipeline.get_state(0))
         logging.debug('ADD INPUT SOURCE, SYNC WITH PARENT: %s', source.sync_state_with_parent())
         #self.set_active_input_by_source(source, transition=False)
         if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
-            if self.inputs or self.backgrounds:
+            if len(self.inputs)>1 or self.backgrounds:
                 self.pipeline.set_state(Gst.State.PLAYING)
             else:
                 self.start()
         self.pipeline.recalculate_latency()
-        logging.debug('ADD INPUT SOURCE , PIPE STATE: %s', self.pipeline.get_state(0))
         GLib.idle_add(self._set_xvsync)
 
     def add_background_source(self, source, xpos=0, ypos=0):
@@ -318,7 +318,7 @@ class TetraApp(GObject.GObject):
             def f():
                 ret = self.pipeline.set_state (Gst.State.PLAYING)
                 GLib.idle_add(self._set_xvsync)
-                logging.debug('STARTING ret= %s', ret)
+                logging.debug('STARTING (firstime?) ret= %s', ret)
             self.pipeline.set_state (Gst.State.READY)
             GLib.timeout_add(100, f)
             return
@@ -336,6 +336,7 @@ class TetraApp(GObject.GObject):
         if self._rec_ok_cnt == 0:
             self.pipeline.set_state(Gst.State.PLAYING)
             self._recording = True
+            Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_record_start')
             self.emit('record-started')
 
     def __start_file_recording(self):
@@ -524,24 +525,6 @@ class TetraApp(GObject.GObject):
                 self.preview_sinks.pop(idx)
                 break
         logging.debug('SOURCE BIN REMOVED SINK POP OK')
-
-
-        if not self.inputs:
-            if not self.backgrounds:
-                def go_to_null():
-                    self.pipeline.set_state(Gst.State.NULL)
-                    logging.debug('SOURCE BIN REMOVED OK')
-                    return False
-                self.emit('source-disconnected', source)
-                GLib.timeout_add(10, go_to_null)
-                return
-#        else:
-###            self.__init_inputs()
-###            self.__init_outputs()
-###
-###            self.pipeline.set_state(Gst.State.PLAYING)
-##            self.pipeline.recalculate_latency()
-##            GLib.idle_add(self._set_xvsync)
 
         self.pipeline.set_state(Gst.State.PLAYING)
         self.pipeline.recalculate_latency()
