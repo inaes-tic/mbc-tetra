@@ -40,6 +40,7 @@ class BaseArchivable(BaseBin):
         BaseBin.__init__(self)
         self._stream_writer_sources = []
         self.stream_writer = None
+        self.ready_to_record = False
 
     def add_stream_writer_source(self, src):
         self._stream_writer_sources.append(src)
@@ -76,11 +77,13 @@ class BaseArchivable(BaseBin):
             sw.stop()
         else:
             self.emit('record-stopped')
+            self.ready_to_record = False
 
     def start_file_recording(self, location=None, timestamp=None):
         def sw_stopped_cb(ssw):
             self.remove(ssw)
             self.stream_writer = None
+            self.ready_to_record = False
             self.emit('record-stopped')
 
         def add_sw(location='/dev/null'):
@@ -94,14 +97,16 @@ class BaseArchivable(BaseBin):
 
             for src in self._stream_writer_sources:
                 logging.debug('STREAM WRITER LINK ok?: %s', src.link(sw))
-            sw.sync_state_with_parent()
+            logging.debug('MuxedFileWriter sync with parent: %s', sw.sync_state_with_parent())
             return True
 
         if self.stream_writer is None:
             location = self.get_record_filename(timestamp=timestamp)
             if location and add_sw(location):
                 logging.debug('Start archiving to: %s', location)
+                self.ready_to_record = True
                 self.emit('ready-to-record')
+                self._send_element_message('ready-to-record')
             else:
                 return False
         else:

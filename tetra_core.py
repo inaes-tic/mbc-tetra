@@ -43,7 +43,9 @@ class TetraApp(GObject.GObject):
         self.current_input = None
         self._automatic = True
         self._initialized = False
-        self._rec_ok_cnt = 0
+        self._rec_stop_cnt = 0
+        self._rec_stop_cnt_lck = threading.Lock()
+        self._rec_ok = deque()
         self._about_to_record = False
         self._recording = False
         self._to_remove = {}
@@ -325,49 +327,54 @@ class TetraApp(GObject.GObject):
 
 
     def _start_record_ok(self, sink, *data):
-        if self._rec_ok_cnt:
-            self._rec_ok_cnt -= 1
-        if self._rec_ok_cnt == 0:
-            self.pipeline.set_state(Gst.State.PLAYING)
-            self._recording = True
-            Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_record_start')
+        Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'record_started%d' % len(self._rec_ok))
+        logging.debug('got ready-to-record from %s', sink)
+        logging.debug('got ready-to-record, ok count: %d', len(self._rec_ok))
+
+        ok = True
+        for el in self._rec_ok:
+            if not el.ready_to_record:
+                ok = False
+
+        if ok:
+            logging.debug('RECORD , GOING TO PLAYING: %s', self.pipeline.set_state(Gst.State.PLAYING))
+            for el in self._rec_ok:
+                logging.debug('RECORD, SETTING INPUT %s TO PLAYING: %s', el, el.set_state(Gst.State.PLAYING))
+            self.pipeline.recalculate_latency()
             self.emit('record-started')
 
+
     def __start_file_recording(self):
-        # this is a quick and dirty way to avoid negotiation errors.
-        # We go to READY and when every output capable of file writing
-        # has replaced the old stream writer with a fresh one we go again
-        # into PLAYING.
-        self._rec_ok_cnt = 0
-
-        self.pipeline.set_state(Gst.State.READY)
-
+        # not happy with this, it should work without going to NULL.
+        self._rec_ok.clear()
         now = time.localtime()
         now = time.strftime("%Y-%m-%d-%H:%M:%S", now)
+        logging.debug('RECORD , GOING TO NULL: %s', self.pipeline.set_state(Gst.State.NULL))
         for out in self.outputs:
-            if out.start_file_recording(timestamp=now):
-                self._rec_ok_cnt += 1
+            ret = out.start_file_recording(timestamp=now)
+            if ret:
+                self._rec_ok.append(out)
+            logging.debug('START RECORDING FOR %s: %s ', out, ret)
         for inp in self.inputs:
-            if inp.start_file_recording(timestamp=now):
-                self._rec_ok_cnt += 1
-
-        # no sink or source was able to start recording
-        if self._rec_ok_cnt == 0:
-            self.pipeline.set_state(Gst.State.PLAYING)
+            ret = inp.start_file_recording(timestamp=now)
+            if ret:
+                self._rec_ok.append(inp)
+            logging.debug('START RECORDING FOR %s: %s ', inp, ret)
+        logging.debug('RECORDING COUNT %d', len(self._rec_ok))
 
     def _record_stopped(self, sink, *data):
-        if self._rec_stop_cnt:
-            self._rec_stop_cnt -= 1
-            if self._rec_stop_cnt == 0:
-                if self._about_to_record:
-                    self.__start_file_recording()
-                    self._about_to_record = False
-                else:
-                    if self._recording and self.pipeline.get_state(0)[1] == Gst.State.PLAYING:
-                        self.pipeline.set_state (Gst.State.READY)
-                        self.pipeline.set_state (Gst.State.PLAYING)
+        logging.debug('got record-stopped from %s', sink)
+        if self._rec_stop_cnt_lck.acquire(True):
+            if self._rec_stop_cnt:
+                self._rec_stop_cnt -= 1
+                if self._rec_stop_cnt == 0:
+                    if self._about_to_record:
+                        self.__start_file_recording()
+                        self._about_to_record = False
+                    else:
                         self._recording = False
-                    self.emit('record-stopped')
+                        self.emit('record-stopped')
+            self._rec_stop_cnt_lck.release()
 
     def start_file_recording(self):
         if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
@@ -383,14 +390,13 @@ class TetraApp(GObject.GObject):
 
 
     def stop_file_recording(self):
-        if not self._recording:
-            return
         self._rec_stop_cnt = len(self.outputs) + len(self.inputs)
         for out in self.outputs:
             out.stop_file_recording()
 
         for inp in self.inputs:
             inp.stop_file_recording()
+        self.pipeline.set_state(Gst.State.PLAYING)
 
     def calibrate_bg_noise (self, *args):
         bgnoise = 0
