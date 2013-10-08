@@ -42,6 +42,9 @@ class BaseArchivable(BaseBin):
         self.stream_writer = None
         self.ready_to_record = False
 
+    def _build_muxer(self, *args):
+        return None
+
     def add_stream_writer_source(self, src):
         self._stream_writer_sources.append(src)
 
