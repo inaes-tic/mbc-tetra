@@ -191,7 +191,7 @@ class VideoMixerTransition(BaseTransition):
             if not self.backgrounds:
                 idx = self.inputs.index(source)
                 if idx:
-                    self.set_active_input_by_source(self.inputs[idx-1])
+                    self.set_active_input_by_source(self.inputs[idx-1], transition='fast')
                 else:
                     self.current_input = None
             else:
