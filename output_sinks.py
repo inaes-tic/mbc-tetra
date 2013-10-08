@@ -175,6 +175,7 @@ class BaseH264Output(BaseOutput):
     def _build_sink(self, *args):
         conf = self.conf
         vsink = Gst.ElementFactory.make ('tcpserversink', None)
+        vsink.set_property('sync-method', 4) # burst-keyframe - Serve burst-value data starting on a keyframe
         # remember to change them in the streaming server if you
         # stray away from the defaults
         vsink.set_property('host', conf.setdefault('host', '127.0.0.1'))
