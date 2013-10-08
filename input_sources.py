@@ -35,14 +35,21 @@ class GeneralInputError(Exception):
 
 class BaseInput(BaseArchivable):
     _elem_type = 'source'
-    def __init__(self):
+    def __init__(self, name=None, width=None, height=None):
         BaseArchivable.__init__(self)
         self.volume = None
         self.xvsink = None
         self.level = None
         self.vcaps = None
+        self._geometries = deque()
+        self._current_geometry = (width, height)
         self._on_error = False
         self._on_error_lck = threading.Lock()
+
+        if name:
+            self.set_property('name', name)
+
+        self.push_geometry(width, height)
 
     def set_volume(self, volume):
         if self.volume is None:
@@ -63,9 +70,23 @@ class BaseInput(BaseArchivable):
         if height:
             tmpl += ',height=%i' % height
 
+        self._current_geometry = (width,height)
         caps = Gst.Caps.from_string(tmpl)
         if caps:
             self.vcaps.set_property('caps', caps)
+            return True
+
+    def push_geometry(self, width=None, height=None):
+        self._geometries.append(self._current_geometry)
+        self.set_geometry(width, height)
+
+    def pop_geometry(self):
+        logging.debug('GEOMS: %s', self._geometries)
+        try:
+            new = self._geometries.pop()
+            self.set_geometry(*new)
+        except IndexError:
+            return
 
     def set_mute(self, mute):
         if self.volume is None:
@@ -95,9 +116,7 @@ class C920Input(BaseInput):
     _mux_pad_names = ['video_%u', 'audio_%u']
     filename_suffix = '.mkv'
     def __init__(self, video_props, audio_props, name=None, serial='', *args, **kwargs):
-        BaseInput.__init__(self)
-        if name:
-            self.set_property('name', name)
+        BaseInput.__init__(self, name=name, width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
 
         self._filename_template = serial
         self.asink = None
@@ -266,9 +285,7 @@ def C920Probe(device, context):
 
 class TestInput(BaseInput):
     def __init__(self, name=None):
-        BaseInput.__init__(self)
-        if name:
-            self.set_property('name', name)
+        BaseInput.__init__(self, name=name)
 
         self.asink = None
         self.vsink = None
@@ -368,9 +385,7 @@ GObject.type_register(TestInput)
 
 class AlsaInput(BaseInput):
     def __init__(self, audio_props=None, name=None):
-        BaseInput.__init__(self)
-        if name:
-            self.set_property('name', name)
+        BaseInput.__init__(self, name=name)
 
         self.asink = None
 
@@ -540,9 +555,7 @@ GObject.type_register(ImageSource)
 
 class UriDecodebinSource(BaseInput):
     def __init__(self, location=None, name=None, width=None, height=None):
-        BaseInput.__init__(self)
-        if name:
-            self.set_property('name', name)
+        BaseInput.__init__(self, name=name, width=width, height=height)
 
         self.__build_audio_pipeline()
         self.__build_video_pipeline()
@@ -551,6 +564,7 @@ class UriDecodebinSource(BaseInput):
         self.add(decodebin)
         decodebin.connect('pad-added', self.__pad_add_cb)
         decodebin.set_property('uri', location)
+        decodebin.set_property('use-buffering', True)
         self.decodebin = decodebin
 
         agpad = Gst.GhostPad.new('audiosrc', self.aq.get_static_pad('src'))
@@ -558,8 +572,6 @@ class UriDecodebinSource(BaseInput):
 
         self.add_pad(agpad)
         self.add_pad(vgpad)
-
-        self.set_geometry(width, height)
 
 
     def do_handle_message(self, message):
