@@ -186,7 +186,7 @@ class VideoMixerTransition(BaseTransition):
         if pad not in self.pip_pads:
             self.pip_pads.append(pad)
             self._reset_pad(pad, {'alpha':0, 'zorder':self.PIP_LAYER})
-            source.set_geometry(VIDEO_WIDTH/3, VIDEO_HEIGHT/3)
+            source.push_geometry(VIDEO_WIDTH/3, VIDEO_HEIGHT/3)
         if source is self.current_input:
             if not self.backgrounds:
                 idx = self.inputs.index(source)
@@ -233,7 +233,7 @@ class VideoMixerTransition(BaseTransition):
             return
 
         # back to original size
-        source.set_geometry()
+        source.pop_geometry()
         self._reset_pad(pad, {'alpha':1, 'xpos':0, 'ypos':0, 'zorder': self.FG_CUR_LAYER})
         self.pip_pads.remove(pad)
         self.current_input = source
