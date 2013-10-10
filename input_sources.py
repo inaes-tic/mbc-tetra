@@ -142,6 +142,10 @@ class C920Input(BaseInput):
         self.set_uvc_controls()
         self.xvsink.set_property('sync', XV_SYNC)
 
+    def do_state_changed(self, prev, curr, new):
+        if curr == Gst.State.PAUSED:
+            self.set_geometry(*self._current_geometry)
+
     def set_uvc_controls (self):
         controls = {
             'Power Line Frequency': 1,
