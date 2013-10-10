@@ -203,6 +203,7 @@ class C920Input(BaseInput):
         vconv.link(vscale)
         vscale.link(vcaps)
         self.vsink = vcaps
+        self.vtee = tee
 
         self.add_stream_writer_source(streamvt)
 
@@ -221,7 +222,7 @@ class C920Input(BaseInput):
         self.volume = volume
 #
         fasink = Gst.ElementFactory.make ('fakesink', None)
-        fasink.set_property ('sync', False)
+        fasink.set_property ('sync', True)
 #
         aconv = Gst.ElementFactory.make ('audioconvert', None)
         aconv2 = Gst.ElementFactory.make ('audioconvert', None)
@@ -572,25 +573,6 @@ class UriDecodebinSource(BaseInput):
 
         self.add_pad(agpad)
         self.add_pad(vgpad)
-
-
-    def do_handle_message(self, message):
-        if not message:
-            return
-        # we can be called at any time, so when playing for the first time seek to the begining unless
-        # it is a user initiated pause.
-        # FIXME: When resuming watch out for time changes.
-        if message.type == Gst.MessageType.STATE_CHANGED and message.src is self.decodebin:
-            prev, new, pending = message.parse_state_changed()
-            if new == Gst.State.PAUSED and prev == Gst.State.READY:
-                self._on_error = False
-                def cb(*args):
-                    self.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, 0)
-                    return False
-                GLib.idle_add(cb)
-                return
-
-        BaseInput.do_handle_message(self, message)
 
     def __pad_add_cb(self, element, newpad):
         for el in [self.vrate, self.arate]:
