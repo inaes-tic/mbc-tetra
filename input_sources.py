@@ -432,7 +432,7 @@ class AlsaInput(BaseInput):
         self.volume = volume
 #
         fasink = Gst.ElementFactory.make ('fakesink', None)
-        fasink.set_property ('sync', False)
+        fasink.set_property ('sync', True)
 #
         aconv = Gst.ElementFactory.make ('audioconvert', None)
         aconv2 = Gst.ElementFactory.make ('audioconvert', None)
