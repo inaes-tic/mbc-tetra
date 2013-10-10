@@ -141,9 +141,16 @@ class TetraApp(GObject.GObject):
         source.connect('record-stopped', self._record_stopped)
 
         self.pipeline.add(source)
-        source.link_pads('audiosrc', self.amixer, 'sink_%u')
 
-        if type=='input':
+        if type not in ['input', 'background', 'video-insert']:
+            type = 'video-insert'
+
+        if type == 'input':
+            logging.debug('_add_source %s link to amixer: %s', source, source.link_pads('audiosrc', self.amixer, 'sink_%u'))
+        else:
+            logging.debug('_add_source %s link to insert_mixer: %s', source, source.link_pads('audiosrc', self.insert_mixer, 'sink_%u'))
+
+        if type in ['input', 'video-insert']:
             self.audio_avg[source] = deque (maxlen=WINDOW_LENGTH * 10)
             self.audio_peak[source] = deque (maxlen=WINDOW_LENGTH * 10)
             self.inputs.append(source)
@@ -174,6 +181,9 @@ class TetraApp(GObject.GObject):
 
     def add_background_source(self, source, xpos=0, ypos=0):
         self._add_source(source, type='background')
+
+    def add_video_insert(self, source):
+        self._add_source(source, type='video-insert')
 
     def add_audio_insert(self, source):
         self.pipeline.add(source)
