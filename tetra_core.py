@@ -85,7 +85,6 @@ class TetraApp(GObject.GObject):
         self.outputs = []
         self.audio_inserts = []
         self.video_inputs = []
-        self.volumes = []
         self.levels = []
         self.amixer = Gst.ElementFactory.make ('adder', None)
         self.amixer.set_property('caps', AUDIO_CAPS)
@@ -148,7 +147,6 @@ class TetraApp(GObject.GObject):
             self.audio_avg[source] = deque (maxlen=WINDOW_LENGTH * 10)
             self.audio_peak[source] = deque (maxlen=WINDOW_LENGTH * 10)
             self.inputs.append(source)
-            self.volumes.append(source.volume)
             self.levels.append(source.level)
 
             self.mixer.add_input_source(source)
@@ -183,41 +181,17 @@ class TetraApp(GObject.GObject):
 
         source.link_filtered(self.insert_mixer, AUDIO_CAPS)
 
-        #self.volumes.append(source.volume)
-        #self.levels.append(source.level)
-
         source.initialize()
         source.sync_state_with_parent()
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_add_insert')
-
-    def mute_channel (self, chanidx, mute):
-        try:
-            self.volumes[chanidx].set_property('mute', mute)
-        except IndexError:
-            pass
-
-    def set_channel_volume(self, chanidx, volume):
-        if volume > 1.5:
-            volume = 1.5
-        elif volume < 0:
-            volume = 0
-
-        try:
-            self.volumes[chanidx].set_property('volume', volume)
-        except IndexError:
-            pass
 
     def set_audio_source(self, source):
         if source not in ['internal', 'external']:
             return
         if source == 'internal':
-            for src in self.audio_inserts:
-                src.set_mute(True)
             self.cam_vol.set_property('mute', False)
         else:
             self.cam_vol.set_property('mute', True)
-            for src in self.audio_inserts:
-                src.set_mute(False)
 
     def set_automatic(self, auto=True):
         self._automatic = auto
