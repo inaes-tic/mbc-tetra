@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import logging
 
@@ -27,7 +28,7 @@ import config
 from common import *
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
-from widgets import SoundMixWidget, PreviewWidget, MasterMonitor, PipManager
+from widgets import SoundMixWidget, PreviewWidget, MasterMonitor, PipManager, RecordWidget
 import input_sources
 
 class MainWindow(object):
@@ -38,6 +39,14 @@ class MainWindow(object):
         self.pipmgr.connect('switch', self.switch_cam)
         self.pipmgr.connect('pip-start', self.pip_start)
         self.pipmgr.connect('pip-off', self.pip_off)
+
+        app.connect('level', self.update_levels)
+        app.connect('master-level', self.update_master_level)
+        app.connect('source-disconnected', self.source_disconnected_cb)
+        app.connect('prepare-window-handle', self.prepare_window_handle_cb)
+
+        self.imon.connect('added', self.source_added_cb)
+        self.imon.start()
 
         self.builder = Gtk.Builder ()
         self.builder.add_from_file (config.get('main_ui', 'main_ui_2.ui'))
@@ -58,9 +67,24 @@ class MainWindow(object):
         self.sound_mix.connect('set-mix-source', self.insert_sel_cb)
         self.insert_sel_cb(self.sound_mix, None)
 
-        self.main_box.pack_end(self.pipmgr, False, False, 0)
+        pipbox = self.builder.get_object('PiPBox')
+        if pipbox:
+            pipbox.add(self.pipmgr)
+
+        self.recwidget = None
+        recbox = self.builder.get_object('RecBox')
+        if recbox:
+            self.recwidget = RecordWidget()
+            recbox.add(self.recwidget)
+            def rec_start(*args):
+                app.start_file_recording()
+            def rec_stop(*args):
+                app.stop_file_recording()
+            self.recwidget.connect('record-start', rec_start)
+            self.recwidget.connect('record-stop', rec_stop)
+
         self.master_monitor = MasterMonitor()
-        self.main_box.pack_end(self.master_monitor, False, False, 0)
+        self.preview_box.pack_end(self.master_monitor, False, False, 0)
 
         self.sliders = []
         self.bars = []
@@ -81,21 +105,9 @@ class MainWindow(object):
         #live.connect('draw', self.live_draw_cb)
 
         self.builder.get_object('automatico').connect('clicked', self.auto_click_cb)
-        def rec_start(*args):
-            app.start_file_recording()
-        def rec_stop(*args):
-            app.stop_file_recording()
-        self.builder.get_object('rec_start').connect('clicked', rec_start)
-        self.builder.get_object('rec_stop').connect('clicked', rec_stop)
+
 
         app.live_sink.set_window_handle(live.get_property('window').get_xid())
-
-        app.connect('level', self.update_levels)
-        app.connect('master-level', self.update_master_level)
-        app.connect('source-disconnected', self.source_disconnected_cb)
-        app.connect('prepare-window-handle', self.prepare_window_handle_cb)
-        self.imon.connect('added', self.source_added_cb)
-        self.imon.start()
 
 
     def on_keypress (self, widget, event):
