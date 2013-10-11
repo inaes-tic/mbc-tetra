@@ -373,6 +373,42 @@ class PipManager(Gtk.Box):
 GObject.type_register(PipManager)
 
 
+class RecordWidget(Gtk.Box):
+    __gsignals__ = {
+        # camera idx, -1 for all.
+        "record-start":   (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+        "record-stop":    (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+        "select-folder":  (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+    }
+    def __init__(self, *args, **kwargs):
+        Gtk.Box.__init__(self)
+        builder = Gtk.Builder ()
+        self.builder = builder
+        self.conf = config.get('FileArchiving', {})
+
+        builder.add_objects_from_file (config.get('rec_ui','rec.ui'), ['RecordWidget'])
+        main = builder.get_object('RecordWidget')
+        self.add(main)
+
+        self.builder.get_object('rec_start').connect('clicked', self.rec_start)
+        self.builder.get_object('rec_stop').connect('clicked', self.rec_stop)
+
+        self.folder = self.builder.get_object('folder')
+        self.folder.connect('current-folder-changed', self.folder_sel_cb)
+        dest = self.conf.setdefault('folder', '')
+        self.folder.set_filename(dest)
+
+    def folder_sel_cb(self, widget, *args):
+        self.conf['folder'] = widget.get_filename()
+
+    def rec_start(self, widget, *args):
+        self.emit('record-start', self.folder.get_filename())
+
+    def rec_stop(self, widget, *args):
+        self.emit('record-stop', self.folder.get_filename())
+
+GObject.type_register(RecordWidget)
+
 if __name__ == '__main__':
     Gtk.init(sys.argv)
     def cb(widget, arg):
