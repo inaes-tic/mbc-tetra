@@ -2,6 +2,7 @@
 
 import logging
 
+import os
 import sys
 import time
 from collections import deque
@@ -394,9 +395,13 @@ class RecordWidget(Gtk.Box):
         self.builder.get_object('rec_stop').connect('clicked', self.rec_stop)
 
         self.folder = self.builder.get_object('folder')
-        self.folder.connect('current-folder-changed', self.folder_sel_cb)
+
         dest = self.conf.setdefault('folder', '')
+        if not os.path.isdir(dest):
+            os.makedirs(dest)
         self.folder.set_filename(dest)
+
+        self.folder.connect('selection-changed', self.folder_sel_cb)
 
     def folder_sel_cb(self, widget, *args):
         self.conf['folder'] = widget.get_filename()
