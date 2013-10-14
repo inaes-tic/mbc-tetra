@@ -26,7 +26,7 @@ VIDEO_RATE = "24/1"
 VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=%d,height=%d,framerate=%s,format=I420' % (VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_RATE))
 VIDEO_CAPS_SIZE = Gst.Caps.from_string ('video/x-raw,width=%d,height=%d,framerate=%s,format=I420' % (VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_RATE))
 
-AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,rate=44100,channels=2,format=S16LE')
+AUDIO_CAPS = Gst.Caps.from_string ('audio/x-raw,rate=48000,channels=2,format=S16LE')
 
 
 INPUT_COUNT = 0

@@ -255,7 +255,7 @@ class C920Input(BaseInput):
         #tee.link (streamaq)
         q3.link (aconv2)
         aconv2.link(ares)
-        ares.link(q2)
+        ares.link_filtered(q2, AUDIO_CAPS)
         q1.link (aconv)
         aconv.link (flt)
         flt.link (level)
