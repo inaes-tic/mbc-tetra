@@ -790,6 +790,8 @@ class InterPlayer(GObject.GObject):
 
     def bus_message_cb (self, bus, msg, arg=None):
         if msg.type == Gst.MessageType.EOS:
+            self.pipeline.set_state(Gst.State.PAUSED)
+            self.emit('level', [-100,-100])
             self.emit('eos')
 
         return True

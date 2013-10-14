@@ -551,6 +551,7 @@ class NonliveWidget(Gtk.Box):
         self.emit('do-action', name)
 
     def player_eos_cb(self, player=None, *args):
+        self.position.set_fraction(0)
         if self.current is None:
             return
         if self._lck.acquire():
