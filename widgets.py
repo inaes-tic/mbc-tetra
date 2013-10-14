@@ -4,6 +4,7 @@ import logging
 
 import os
 import sys
+import threading
 import time
 from collections import deque
 
@@ -16,6 +17,7 @@ from gi.repository import GstVideo
 from gi.repository import Gtk
 from gi.repository import Gdk
 from gi.repository import GdkX11
+from gi.repository import Pango
 
 import config
 from common import *
@@ -413,6 +415,193 @@ class RecordWidget(Gtk.Box):
         self.emit('record-stop', self.folder.get_filename())
 
 GObject.type_register(RecordWidget)
+
+
+class NonliveWidget(Gtk.Box):
+    __gsignals__ = {
+        "stop":  (GObject.SIGNAL_RUN_FIRST, None, []),
+        "play":  (GObject.SIGNAL_RUN_FIRST, None, []),
+        "pause":  (GObject.SIGNAL_RUN_FIRST, None, []),
+        "do-action":  (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+    }
+    def __init__(self, player=None, *args, **kwargs):
+        self._lck = threading.Lock()
+        Gtk.Box.__init__(self)
+        builder = Gtk.Builder ()
+        self.builder = builder
+        self.conf = config.get('Nonlive', {})
+        self.player = None
+        self.current = None
+        if player:
+            self.set_player(player)
+
+        builder.add_from_file (config.get('nonlive_ui','nonlive.ui'))
+        main = builder.get_object('NonliveWidget')
+        main.reparent(self)
+
+        self.position   = builder.get_object('position')
+        self.eventbox   = builder.get_object('eventbox')
+        self.eventbox.connect('button-press-event', self.position_click_cb)
+        self.eventbox.connect('touch-event', self.position_click_cb)
+
+        self.filedlg   = builder.get_object('filedlg')
+        self.filedlg.connect('file-activated', self.file_add)
+        self.filetree  = builder.get_object('filetree')
+        self.filestore = self.builder.get_object('file_store')
+        self.filetree.set_model(self.filestore)
+
+        renderer = Gtk.CellRendererText()
+        renderer.set_property('weight_set', True)
+        column = Gtk.TreeViewColumn("Playlist", renderer, text=1)
+        column.set_property('expand', False)
+        column.set_property('sizing', Gtk.TreeViewColumnSizing.FIXED)
+        column.add_attribute(renderer, 'weight', 2)
+        self.filetree.append_column(column)
+
+        self.filetree.connect('row-activated', self.row_activated)
+
+        builder.get_object('add_file').connect('clicked', self.file_add)
+        builder.get_object('remove_file').connect('clicked', self.file_remove)
+        builder.get_object('add_back_to_live').connect('clicked', self.add_back_to_live)
+        builder.get_object('play').connect('clicked', self.play)
+        builder.get_object('pause').connect('clicked', self.pause)
+        builder.get_object('stop').connect('clicked', self.stop)
+
+        self.mix = MasterMonitor()
+        self.mix.connect('volume', self.volume_cb)
+        self.mix.connect('mute', self.mute_cb)
+        builder.get_object('MonitorBox').add(self.mix)
+
+
+    def file_add(self, widget, *args):
+        uris = self.filedlg.get_uris()
+        for uri in uris:
+            fn = GLib.filename_from_uri(uri)[0]
+            if os.path.isfile(fn):
+                self.filestore.append([uri, os.path.basename(fn), Pango.Weight.NORMAL])
+
+    def file_remove(self, widget, *args):
+        store, treeiter = self.filetree.get_selection().get_selected()
+        if treeiter == self.current:
+            self.current = store.iter_next(treeiter)
+        store.remove(treeiter)
+
+    def add_back_to_live(self, widget, *args):
+        self.filestore.append(['action://go-live', '(volver a vivo)', Pango.Weight.NORMAL])
+
+    def _clear_rows(self):
+        for r in self.filestore:
+            r[2] = Pango.Weight.NORMAL
+
+    def play_iter_or_path(self, path=None):
+        if path is None:
+            return
+
+        if isinstance(path, Gtk.TreePath):
+            self.current = self.filestore.get_iter(path)
+        else:
+            self.current = path
+        self._clear_rows()
+
+        row = self.filestore[path]
+        uri = row[0]
+        if uri.startswith('action://'):
+            self._emit_action_from_uri(uri)
+            toplay = self.filestore.iter_next(self.current)
+            self.current = toplay
+            if toplay:
+                self.filestore[toplay][2] = Pango.Weight.BOLD
+            if self.player:
+                self.player.play_pause(pause=True)
+        else:
+            row[2] = Pango.Weight.BOLD
+            if self.player:
+                self.player.play_uri(uri)
+
+    def row_activated(self, widget, path, column, *data):
+        self.play_iter_or_path(path)
+
+    def play(self, widget, *args):
+        if not self.player:
+            return
+
+        if self.current is None:
+            if self.player.uri is None:
+                treeiter = self.filestore.get_iter_first()
+                self.play_iter_or_path(treeiter)
+            else:
+                self.play_iter_or_path(self.filestore[-1].iter)
+        else:
+            if self.player.uri == self.filestore[self.current][0]:
+                self.player.play_pause(pause=False)
+            else:
+                self.play_iter_or_path(self.current)
+
+    def pause(self, widget, *args):
+        if self.player:
+            self.player.play_pause(pause=True)
+
+    def stop(self, widget, *args):
+        if self.player:
+            self.pause(widget, args)
+            self.player.seek(0)
+
+    def _emit_action_from_uri(self, uri):
+        name = uri.replace('action://', '')
+        self.emit('do-action', name)
+
+    def player_eos_cb(self, player=None, *args):
+        if self.current is None:
+            return
+        if self._lck.acquire():
+            Gdk.threads_enter ()
+            toplay = self.filestore.iter_next(self.current)
+            if toplay is None:
+                self._clear_rows()
+                self.current = toplay
+                return
+
+            self.play_iter_or_path(toplay)
+            Gdk.threads_leave ()
+            self._lck.release()
+
+    def player_playing_cb(self, player, *args):
+        self.emit('play')
+
+    def player_paused_cb(self, player, *args):
+        self.emit('pause')
+
+    def player_level_cb(self, player, rms):
+        self.mix.set_levels(rms)
+
+    def player_position_cb(self, player, position):
+        self.position.set_fraction(position)
+
+    def set_player(self, player):
+        if self.player:
+            self.player.stop()
+        self.player = player
+
+        player.connect('eos',self.player_eos_cb)
+        player.connect('playing',self.player_playing_cb)
+        player.connect('paused',self.player_paused_cb)
+        player.connect('level',self.player_level_cb)
+        player.connect('position',self.player_position_cb)
+
+    def volume_cb(self, widget, volume):
+        if self.player:
+            self.player.set_volume(volume)
+
+    def mute_cb(self, widget, mute):
+        if self.player:
+            self.player.set_mute(mute)
+
+    def position_click_cb (self, widget, event):
+        if self.player:
+            self.player.seek(event.x / widget.get_allocation().width)
+
+GObject.type_register(NonliveWidget)
+
 
 if __name__ == '__main__':
     Gtk.init(sys.argv)
