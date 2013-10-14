@@ -86,10 +86,10 @@ class TetraApp(GObject.GObject):
         self.audio_inserts = []
         self.video_inputs = []
         self.levels = []
+
         self.amixer = Gst.ElementFactory.make ('adder', None)
-        self.amixer.set_property('caps', AUDIO_CAPS)
-        self.insert_mixer = Gst.ElementFactory.make ('adder', None)
-        self.insert_mixer.set_property('caps', AUDIO_CAPS)
+        self.insert_mixer = Gst.ElementFactory.make ('liveadder', None)
+
 
         self.cam_vol = Gst.ElementFactory.make ('volume', None)
         self.pipeline.add(self.cam_vol)

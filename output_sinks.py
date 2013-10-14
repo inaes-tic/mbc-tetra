@@ -131,16 +131,22 @@ class AutoOutput(BaseOutput):
             self.set_property('name', name)
 
         self.aq = Gst.ElementFactory.make('queue2', 'audio q')
+        self.ai = Gst.ElementFactory.make('identity', 'audio i')
         self.vq = Gst.ElementFactory.make('queue2', 'video q')
 
         self.asink = Gst.ElementFactory.make('autoaudiosink', 'audio sink')
+        self.asink = Gst.ElementFactory.make('alsasink', 'audio sink')
         self.vsink = Gst.ElementFactory.make('xvimagesink', 'video sink')
         self.preview_sink = self.vsink
 
-        for el in [self.aq, self.vq, self.asink, self.vsink]:
+        self.ai.set_property('sync', True)
+        self.asink.set_property('sync', False)
+
+        for el in [self.aq, self.ai, self.vq, self.asink, self.vsink]:
             self.add(el)
 
-        self.aq.link(self.asink)
+        self.aq.link(self.ai)
+        self.ai.link(self.asink)
 
         self.vq.link_filtered(self.vsink, VIDEO_CAPS_SIZE)
 
