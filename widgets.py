@@ -4,7 +4,6 @@ import logging
 
 import os
 import sys
-import threading
 import time
 from collections import deque
 
@@ -425,7 +424,6 @@ class NonliveWidget(Gtk.Box):
         "do-action":  (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
     }
     def __init__(self, player=None, *args, **kwargs):
-        self._lck = threading.Lock()
         Gtk.Box.__init__(self)
         builder = Gtk.Builder ()
         self.builder = builder
@@ -554,17 +552,15 @@ class NonliveWidget(Gtk.Box):
         self.position.set_fraction(0)
         if self.current is None:
             return
-        if self._lck.acquire():
-            Gdk.threads_enter ()
-            toplay = self.filestore.iter_next(self.current)
-            if toplay is None:
-                self._clear_rows()
-                self.current = toplay
-                return
+        Gdk.threads_enter ()
+        toplay = self.filestore.iter_next(self.current)
+        if toplay is None:
+            self._clear_rows()
+            self.current = toplay
+            return
 
-            self.play_iter_or_path(toplay)
-            Gdk.threads_leave ()
-            self._lck.release()
+        self.play_iter_or_path(toplay)
+        Gdk.threads_leave ()
 
     def player_playing_cb(self, player, *args):
         self.emit('play')
