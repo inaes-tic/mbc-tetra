@@ -647,7 +647,7 @@ class InterSource(BaseInput):
         #XXX UGLY HACK: interaudiosrc reports itself as being live source with a fixed and big latency.
         # that delays the whole pipeline, so we changed gstinteraudiosrc.c to set min and max latency
         # to 5 buffers instead of the default of 30.
-        aq    = Gst.ElementFactory.make('queue2', 'InterSource Audio Q')
+        aq    = Gst.ElementFactory.make('identity', 'InterSource Audio Q')
         aint  = Gst.ElementFactory.make('interaudiosrc', 'InterSource interaudiosrc')
         aint.set_property('channel', self.channel)
         aint.set_property('do-timestamp', True)
@@ -661,7 +661,7 @@ class InterSource(BaseInput):
 
 
     def __build_video_pipeline(self):
-        vq    = Gst.ElementFactory.make('queue2', 'InterSource Video Q')
+        vq    = Gst.ElementFactory.make('identity', 'InterSource Video Q')
         vint  = Gst.ElementFactory.make('intervideosrc', 'InterSource intervideosrc')
         vcaps = Gst.ElementFactory.make('capsfilter', 'InterSource videocaps')
 
@@ -689,20 +689,39 @@ class InterPlayer(GObject.GObject):
        "paused": (GObject.SIGNAL_RUN_FIRST, None, []),
        "stopped": (GObject.SIGNAL_RUN_FIRST, None, []),
        "level": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+       "position": (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
     }
 
     def __init__(self, channel='channel-1'):
         GObject.GObject.__init__(self)
         self.channel = channel
         self.pipeline = None
+        self.uri = None
+        GLib.timeout_add(200, self._position_cb)
+
+    def set_mute(self, mute):
+        if self.pipeline is None:
+            return
+        self.pipeline.get_by_name('vol').set_property('mute', mute)
+
+    def set_volume(self, volume):
+        if self.pipeline is None:
+            return
+        if volume > 1.5:
+            volume = 1.5
+        elif volume < 0:
+            volume = 0
+        self.pipeline.get_by_name('vol').set_property('volume', volume)
 
     def play_uri(self, uri):
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)
             self.pipeline = None
 
+        self.uri = uri
+
         channel = self.channel
-        desc = 'uridecodebin name=dbin ! videoscale add-borders=true ! videorate ! %s ! queue2 ! intervideosink name=interv channel=%s dbin. ! audio/x-raw ! queue2 ! level ! audioconvert ! audioresample ! interaudiosink name=intera channel=%s' % (VIDEO_CAPS_SIZE.to_string(), channel, channel)
+        desc = 'uridecodebin name=dbin ! videoscale name=vscale add-borders=true ! videorate ! %s ! queue2 ! intervideosink name=interv channel=%s dbin. ! audio/x-raw ! queue2 ! volume name=vol ! level ! audioconvert ! audioresample ! interaudiosink name=intera channel=%s' % (VIDEO_CAPS_SIZE.to_string(), channel, channel)
 
         p = Gst.parse_launch(desc)
         dbin = p.get_by_name('dbin')
@@ -722,8 +741,6 @@ class InterPlayer(GObject.GObject):
             return
 
         state = self.pipeline.get_state(0)[1]
-        if state not in [Gst.State.PLAYING, Gst.State.PAUSED]:
-            return
 
         if pause is None:
             pause = (state == Gst.State.PLAYING)
@@ -733,6 +750,25 @@ class InterPlayer(GObject.GObject):
         else:
             self.pipeline.set_state(Gst.State.PLAYING)
 
+    def stop(self):
+        if self.pipeline:
+            self.pipeline.set_state(Gst.State.NULL)
+
+    def _position_cb(self, *args):
+        if self.pipeline is None:
+            return True
+
+        if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
+            return True
+
+        ok, total = self.pipeline.query_duration(Gst.Format.TIME)
+        ok1, current = self.pipeline.query_position(Gst.Format.TIME)
+        if not (ok and ok1):
+            return True
+
+        self.emit('position', (1.0 * current) / total)
+        return True
+
     def seek(self, position=0):
         if self.pipeline is None:
             return
@@ -741,9 +777,16 @@ class InterPlayer(GObject.GObject):
         ok, total = self.pipeline.query_duration(Gst.Format.TIME)
         if not ok:
             return
-        position = 0.01 * position * total
+        if position:
+            flags = Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT
+        else:
+            flags = Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE
+
+        if position > 1:
+            position = 1
+        position = position * total
         logging.debug('InterPlayer SEEK TOTAL TIME: %s, REQ:%s', total, position)
-        dbin.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, position)
+        dbin.seek_simple(Gst.Format.TIME, flags, position)
 
     def bus_message_cb (self, bus, msg, arg=None):
         if msg.type == Gst.MessageType.EOS:
@@ -766,6 +809,14 @@ class InterPlayer(GObject.GObject):
             }.get(new, None)
             if name:
                 self.emit(name)
+
+            if new not in [Gst.State.PAUSED, Gst.State.PLAYING]:
+                self.emit('position', 0)
+
+        self.pipeline.get_by_name('vscale').set_property('add-borders', True)
+
+        if new == Gst.State.PLAYING:
+            Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.CAPS_DETAILS , 'debug_interplayer_start')
         logging.debug('InterPlayer STATE CHANGE: %s', curr_state)
         self._last_state = curr_state
 
