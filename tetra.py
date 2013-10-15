@@ -33,6 +33,8 @@ import input_sources
 
 class MainWindow(object):
     def __init__(self, app):
+        settings = Gtk.Settings.get_default()
+        settings.props.gtk_button_images = True
         self.app = app
         self.imon = input_sources.InputMonitor()
         self.pipmgr = PipManager()
