@@ -104,11 +104,22 @@ class MainWindow(object):
         live.connect('button-press-event', self.live_click_cb)
         #live.connect('draw', self.live_draw_cb)
 
-        self.builder.get_object('automatico').connect('clicked', self.auto_click_cb)
+        auto = self.builder.get_object('automatico')
+        if auto:
+            auto.connect('clicked', self.auto_click_cb)
 
+        dbg = self.builder.get_object('dbg')
+        if dbg:
+            def state_cb(widget, state):
+                logging.debug('STATE CB: %s', app.pipeline.set_state(state))
+            self.builder.get_object('playing').connect('clicked', state_cb, Gst.State.PLAYING)
+            self.builder.get_object('paused').connect('clicked', state_cb, Gst.State.PAUSED)
+            self.builder.get_object('ready').connect('clicked', state_cb, Gst.State.READY)
+            self.builder.get_object('null').connect('clicked', state_cb, Gst.State.NULL)
 
         app.live_sink.set_window_handle(live.get_property('window').get_xid())
 
+        self.app.set_automatic(False)
 
     def on_keypress (self, widget, event):
         key = event.string
