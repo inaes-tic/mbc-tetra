@@ -28,7 +28,7 @@ import config
 from common import *
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
-from widgets import SoundMixWidget, PreviewWidget, MasterMonitor, PipManager, RecordWidget
+from widgets import SoundMixWidget, PreviewWidget, MasterMonitor, PipManager, RecordWidget, NonliveWidget
 import input_sources
 
 class MainWindow(object):
@@ -85,6 +85,11 @@ class MainWindow(object):
             self.recwidget.connect('record-start', rec_start)
             self.recwidget.connect('record-stop', rec_stop)
 
+        nonlivebox = self.builder.get_object('NonliveBox')
+        if nonlivebox:
+            self.nonlive = NonliveWidget()
+            nonlivebox.add(self.nonlive)
+
         self.master_monitor = MasterMonitor()
         self.preview_box.pack_end(self.master_monitor, False, False, 0)
 
@@ -122,6 +127,22 @@ class MainWindow(object):
         app.live_sink.set_window_handle(live.get_property('window').get_xid())
 
         self.app.set_automatic(False)
+        self.player = input_sources.InterPlayer()
+        self.nonlive.set_player(self.player)
+        self.nonlive.connect('pause', self.player_paused_cb)
+        self.nonlive.connect('play', self.player_playing_cb)
+        self.nonlive.connect('do-action', self.player_paused_cb)
+        self.nonlive.connect('stop', self.player_paused_cb)
+
+        inter = input_sources.InterSource()
+        self.app.add_video_insert(inter)
+        self.intersource = inter
+
+    def player_playing_cb(self, player, *args):
+        self.app.set_active_input_by_source(self.intersource, transition=False)
+    def player_paused_cb(self, player, *args):
+        if self.app.inputs:
+            self.app.set_active_input_by_source(self.app.inputs[0], transition=False)
 
     def source_added_cb(self, imon, src, props):
         source = src(**props)
