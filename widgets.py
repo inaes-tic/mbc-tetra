@@ -446,7 +446,12 @@ class NonliveWidget(Gtk.Box):
         self.filedlg.connect('file-activated', self.file_add)
         self.filetree  = builder.get_object('filetree')
         self.filestore = self.builder.get_object('file_store')
+
+        self._load_playlist()
+
         self.filetree.set_model(self.filestore)
+        for signal in ["row-changed", "row-deleted", "row-has-child-toggled", "row-inserted", "rows-reordered"]:
+            self.filestore.connect(signal, self.store_changed_cb)
 
         renderer = Gtk.CellRendererText()
         renderer.set_property('weight_set', True)
@@ -470,6 +475,14 @@ class NonliveWidget(Gtk.Box):
         self.mix.connect('mute', self.mute_cb)
         builder.get_object('MonitorBox').add(self.mix)
 
+
+    def _load_playlist(self, *args):
+        pl = self.conf.setdefault('playlist', [])
+        for item in pl:
+            self.filestore.append(item)
+
+    def store_changed_cb(self, *args):
+        self.conf['playlist'] = [list(x) for x in self.filestore]
 
     def file_add(self, widget, *args):
         uris = self.filedlg.get_uris()
