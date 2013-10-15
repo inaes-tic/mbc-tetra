@@ -123,12 +123,6 @@ class MainWindow(object):
 
         self.app.set_automatic(False)
 
-    def on_keypress (self, widget, event):
-        key = event.string
-        if not key:
-            return
-        self.kbm.push_key(key)
-
     def source_added_cb(self, imon, src, props):
         source = src(**props)
         preview = self.add_source()
