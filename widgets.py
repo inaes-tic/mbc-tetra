@@ -518,6 +518,7 @@ class NonliveWidget(Gtk.Box):
 
     def row_activated(self, widget, path, column, *data):
         self.play_iter_or_path(path)
+        self.emit('play')
 
     def play(self, widget, *args):
         if not self.player:
@@ -560,6 +561,7 @@ class NonliveWidget(Gtk.Box):
         if toplay is None:
             self._clear_rows()
             self.current = toplay
+            self.emit('stop')
             return
 
         self.play_iter_or_path(toplay)
