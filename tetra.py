@@ -91,7 +91,8 @@ class MainWindow(object):
             nonlivebox.add(self.nonlive)
 
         self.master_monitor = MasterMonitor()
-        self.preview_box.pack_end(self.master_monitor, False, False, 0)
+        self.livebox = self.builder.get_object('LiveBox')
+        self.livebox.pack_end(self.master_monitor, False, False, 0)
 
         self.sliders = []
         self.bars = []
@@ -158,7 +159,7 @@ class MainWindow(object):
 
     def add_source(self, source=None):
         preview = PreviewWidget(source)
-        self.preview_box.add(preview)
+        self.preview_box.pack_start(preview, False, False, 0)
         preview.show()
         self.previews[source] = preview
         preview.connect('preview-clicked', self.preview_click_cb)
