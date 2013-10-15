@@ -85,6 +85,7 @@ class TetraApp(GObject.GObject):
         self.outputs = []
         self.audio_inserts = []
         self.video_inputs = []
+        self.video_inserts = []
         self.levels = []
 
         self.amixer = Gst.ElementFactory.make ('adder', None)
@@ -153,7 +154,10 @@ class TetraApp(GObject.GObject):
         if type in ['input', 'video-insert']:
             self.audio_avg[source] = deque (maxlen=WINDOW_LENGTH * 10)
             self.audio_peak[source] = deque (maxlen=WINDOW_LENGTH * 10)
-            self.inputs.append(source)
+            if type == 'input':
+                self.inputs.append(source)
+            else:
+                self.video_inserts.append(source)
             self.levels.append(source.level)
 
             self.mixer.add_input_source(source)
