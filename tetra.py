@@ -198,7 +198,10 @@ class MainWindow(object):
     def switch_cam(self, widget, idx):
         logging.debug('Switch cam %d', idx)
         try:
-            self.app.set_active_input_by_source(self.app.inputs[idx])
+            if idx == 9:
+                self.app.set_active_input_by_source(self.intersource)
+            else:
+                self.app.set_active_input_by_source(self.app.inputs[idx])
         except IndexError:
             pass
 
