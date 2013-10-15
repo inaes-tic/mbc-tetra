@@ -534,15 +534,18 @@ class NonliveWidget(Gtk.Box):
                 self.player.play_pause(pause=False)
             else:
                 self.play_iter_or_path(self.current)
+        self.emit('play')
 
     def pause(self, widget, *args):
         if self.player:
             self.player.play_pause(pause=True)
+            self.emit('pause')
 
     def stop(self, widget, *args):
         if self.player:
             self.pause(widget, args)
             self.player.seek(0)
+            self.emit('stop')
 
     def _emit_action_from_uri(self, uri):
         name = uri.replace('action://', '')
@@ -562,12 +565,6 @@ class NonliveWidget(Gtk.Box):
         self.play_iter_or_path(toplay)
         Gdk.threads_leave ()
 
-    def player_playing_cb(self, player, *args):
-        self.emit('play')
-
-    def player_paused_cb(self, player, *args):
-        self.emit('pause')
-
     def player_level_cb(self, player, rms):
         self.mix.set_levels(rms)
 
@@ -580,8 +577,6 @@ class NonliveWidget(Gtk.Box):
         self.player = player
 
         player.connect('eos',self.player_eos_cb)
-        player.connect('playing',self.player_playing_cb)
-        player.connect('paused',self.player_paused_cb)
         player.connect('level',self.player_level_cb)
         player.connect('position',self.player_position_cb)
 
