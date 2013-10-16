@@ -168,7 +168,7 @@ class BaseH264Output(BaseOutput):
 
     def _build_audio_encoder(self, *args):
         conf = self.conf
-        aenc = Gst.ElementFactory.make('faac', None)
+        aenc = Gst.ElementFactory.make('voaacenc', None) or Gst.ElementFactory.make('faac', None)
         aenc.set_property('bitrate', conf.setdefault('audio_bitrate', 192000))
         return aenc
 
