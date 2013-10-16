@@ -37,6 +37,7 @@ class MainWindow(object):
         settings.props.gtk_button_images = True
         self.app = app
         self.imon = input_sources.InputMonitor()
+        self.pipgrab = True
         self.pipmgr = PipManager()
         self.pipmgr.connect('switch', self.switch_cam)
         self.pipmgr.connect('pip-start', self.pip_start)
@@ -55,7 +56,7 @@ class MainWindow(object):
 
         self.window = self.builder.get_object('tetra_main')
         self.window.connect ("destroy", lambda app: Gtk.main_quit())
-        self.window.connect ("key-press-event", self.pipmgr.on_keypress)
+        self.window.connect ("key-press-event", self.on_keypress)
         self.window.fullscreen ()
 
         self.preview_box = self.builder.get_object('PreviewBox')
@@ -176,6 +177,16 @@ class MainWindow(object):
             else:
                 self.app.audio_inserts[0].set_device(device)
         self.app.set_audio_source(source)
+
+    def on_keypress (self, widget, event):
+        if event.keyval == Gdk.KEY_F1:
+            self.pipgrab = not self.pipgrab
+
+        if self.pipgrab:
+            self.pipmgr.on_keypress(widget, event)
+            return True
+        else:
+            return False
 
     def pip_off(self, widget, idx):
         logging.debug('PiP off %d', idx)
