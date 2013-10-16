@@ -713,6 +713,11 @@ class InterPlayer(GObject.GObject):
             volume = 0
         self.pipeline.get_by_name('vol').set_property('volume', volume)
 
+    def is_playing(self, *args):
+        if not self.pipeline:
+            return False
+        return self.pipeline.get_state(0)[1] == Gst.State.PLAYING
+
     def play_uri(self, uri):
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)

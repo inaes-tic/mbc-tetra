@@ -188,6 +188,9 @@ class MainWindow(object):
             except IndexError:
                 pass
 
+        if self.player.is_playing():
+            self.app.set_active_input_by_source(self.intersource)
+
     def pip_start(self, widget, idx, pos):
         logging.debug('PiP start %d %s', idx, pos)
         try:
