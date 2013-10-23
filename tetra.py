@@ -57,7 +57,7 @@ class MainWindow(object):
         self.imon.start()
 
         self.builder = Gtk.Builder ()
-        self.builder.add_from_file (config.get('main_ui', 'main_ui_2.ui'))
+        self.builder.add_from_file (config.get('main_ui', 'main_ui_tabbed.ui'))
 
         self.window = self.builder.get_object('tetra_main')
         self.window.connect ("destroy", lambda app: Gtk.main_quit())
