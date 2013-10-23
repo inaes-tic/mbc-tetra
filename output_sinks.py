@@ -265,6 +265,34 @@ class FLVOutput(BaseH264Output):
         vmux.set_property('streamable', True)
         return vmux
 
+class MKVOutput(BaseH264Output):
+    _mux_pad_names = ['audio_%u', 'video_%u']
+    filename_suffix = '.mkv'
+    config_section = 'MKVOutput'
+    def __init__(self, name=None):
+        BaseH264Output.__init__(self)
+        if name:
+            self.set_property('name', name)
+
+    def _build_video_encoder(self, *args):
+        conf = self.conf
+        venc = Gst.ElementFactory.make ('x264enc', None)
+        venc.set_property('byte-stream', True)
+        venc.set_property('tune', 'zerolatency')
+        # it gives unicode but x264enc wants str
+        venc.set_property('speed-preset', str(conf.setdefault('x264_speed_preset', 'ultrafast')))
+
+        # It lowers the compression ratio but gives a stable image faster.
+        venc.set_property ('key-int-max',30)
+        venc.set_property ('bitrate', conf.setdefault('x264_bitrate', 1024))
+
+        return venc
+
+    def _build_muxer(self):
+        vmux = Gst.ElementFactory.make ('matroskamux', None)
+        vmux.set_property('streamable', True)
+        return vmux
+
 
 
 
