@@ -29,6 +29,7 @@ from common import *
 
 from tetra_core import TetraApp, INPUT_COUNT, DEFAULT_NOISE_BASELINE
 from widgets import SoundMixWidget, PreviewWidget, MasterMonitor, PipManager, RecordWidget, NonliveWidget
+from vlc import Vlc
 import input_sources
 
 class MainWindow(object):
@@ -47,6 +48,10 @@ class MainWindow(object):
         app.connect('master-level', self.update_master_level)
         app.connect('source-disconnected', self.source_disconnected_cb)
         app.connect('prepare-window-handle', self.prepare_window_handle_cb)
+        app.connect('state-changed', self.state_changed_cb)
+
+        self.vlc = Vlc(silent=True)
+        self.vlc.launch()
 
         self.imon.connect('added', self.source_added_cb)
         self.imon.start()
@@ -258,6 +263,12 @@ class MainWindow(object):
     def update_levels (self, app, source, peaks):
         if source in self.previews:
             self.previews[source].set_levels(peaks)
+
+    def state_changed_cb(self, app, prev, current, new):
+        if current != Gst.State.PLAYING:
+            self.vlc.stop()
+        else:
+            self.vlc.start()
 
 
 def load_theme(theme_name):
