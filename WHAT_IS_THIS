@@ -1,0 +1,9 @@
+experimental repo.
+trying to decouple inputs from the main mixing / processing
+
+results so far:
+    with hacked interaudiosrc it kind of works, glass to glass latency is not great, sometimes
+    when adding a new camera it lags a lot from the other. But, cpu usage drops. not bothered too much
+    with the preview sinks, it shouldn't matter that they are in they own window instead of the main.
+
+will try with shm next.

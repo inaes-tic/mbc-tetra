@@ -629,7 +629,8 @@ class UriDecodebinSource(BaseInput):
 GObject.type_register(UriDecodebinSource)
 
 class InterSource(BaseInput):
-    def __init__(self, name=None, channel='channel-1'):
+    def __init__(self, name=None, channel='channel-1', slave=None):
+        self.slave = slave
         BaseInput.__init__(self, name=name)
 
         self.channel = channel
@@ -642,6 +643,14 @@ class InterSource(BaseInput):
 
         self.add_pad(agpad)
         self.add_pad(vgpad)
+
+    def set_mute(self, *args, **kwargs):
+        if self.slave:
+            return self.slave.set_mute(*args, **kwargs)
+
+    def set_geometry(self, *args, **kwargs):
+        if self.slave:
+            return self.slave.set_geometry(*args, **kwargs)
 
     def __build_audio_pipeline(self):
         #XXX UGLY HACK: interaudiosrc reports itself as being live source with a fixed and big latency.

@@ -21,7 +21,8 @@ GObject.threads_init()
 Gst.init(sys.argv)
 
 from common import *
-from output_sinks import AutoOutput, MP4Output, MKVOutput
+from output_sinks import AutoOutput, MP4Output, MKVOutput, InterSink
+from input_sources import InterSource
 from transitions import VideoMixerTransition, InputSelectorTransition
 
 
@@ -50,6 +51,7 @@ class TetraApp(GObject.GObject):
         self._recording = False
         self._to_remove = {}
         self._remove_lck = threading.Lock()
+        self._chanidx = 0
 
         self.noise_baseline = DEFAULT_NOISE_BASELINE
         self.speak_up_threshold = SPEAK_UP_THRESHOLD
@@ -83,6 +85,7 @@ class TetraApp(GObject.GObject):
         self.backgrounds = []
         self.inputs = []
         self.outputs = []
+        self.intersinks = []
         self.audio_inserts = []
         self.video_inputs = []
         self.video_inserts = []
@@ -137,18 +140,28 @@ class TetraApp(GObject.GObject):
         sink.connect('record-stopped', self._record_stopped)
         sink.sync_state_with_parent()
 
+    def _get_channel(self):
+        ret = 'intersrc%d' % self._chanidx
+        self._chanidx += 1
+        return ret
+
     def _add_source(self, source, type='input', *args, **kwargs):
         source.connect('ready-to-record', self._start_record_ok)
         source.connect('record-stopped', self._record_stopped)
 
-        self.pipeline.add(source)
 
         if type not in ['input', 'background', 'video-insert']:
             type = 'video-insert'
 
         if type == 'input':
+            self.inputs.append(source)
+            channel=self._get_channel()
+            snk = InterSink(source=source, channel=channel)
+            source = InterSource(channel=channel, slave=source)
+            self.pipeline.add(source)
             logging.debug('_add_source %s link to amixer: %s', source, source.link_pads('audiosrc', self.amixer, 'sink_%u'))
         else:
+            self.pipeline.add(source)
             logging.debug('_add_source %s link to insert_mixer: %s', source, source.link_pads('audiosrc', self.insert_mixer, 'sink_%u'))
 
         if type in ['input', 'video-insert']:
@@ -156,12 +169,16 @@ class TetraApp(GObject.GObject):
             self.audio_peak[source] = deque (maxlen=WINDOW_LENGTH * 10)
             if type == 'input':
                 self.inputs.append(source)
+                self.levels.append(source.level)
+
+                self.mixer.add_input_source(source)
+                self.current_source = source
             else:
                 self.video_inserts.append(source)
-            self.levels.append(source.level)
+                self.levels.append(source.level)
 
-            self.mixer.add_input_source(source)
-            self.current_source = source
+                self.mixer.add_input_source(source)
+                self.current_source = source
 
         elif type=='background':
             self.backgrounds.append(source)

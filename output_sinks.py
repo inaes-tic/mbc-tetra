@@ -295,5 +295,39 @@ class MKVOutput(BaseH264Output):
 
 
 
+class InterSink(BaseArchivable):
+    config_section = None
+    _elem_type = 'sink'
+    def __init__(self, source=None, channel='channel-1'):
+        BaseArchivable.__init__(self)
+        self.channel = channel
+        self.source = None
 
+        desc = 'intervideosink name=interv channel=%s interaudiosink name=intera channel=%s' % (channel, channel)
+
+        p = Gst.parse_launch(desc)
+        self.pipeline = p
+
+        self.add_pad(Gst.GhostPad.new('audiosink', p.get_by_name('intera').get_static_pad('sink')))
+        self.add_pad(Gst.GhostPad.new('videosink', p.get_by_name('interv').get_static_pad('sink')))
+
+##        bus = self.bus = p.get_bus()
+##        bus.add_signal_watch()
+##        bus.connect("message::state-changed", self.bus_state_changed_cb)
+##        bus.connect("message::element", self.bus_element_cb)
+##        bus.connect("message", self.bus_message_cb)
+        self._last_state = [None, None, None]
+        p.add(self)
+        p.set_state(Gst.State.PLAYING)
+
+        if source:
+            self.set_source(source)
+
+    def set_source(self, source):
+        self.source = source
+        self.pipeline.add(source)
+        logging.debug('InterSink %s link audio: %s', self.channel, source.link_pads('audiosrc', self, 'audiosink'))
+        logging.debug('InterSink %s link video: %s', self.channel, source.link_pads('videosrc', self, 'videosink'))
+        source.sync_state_with_parent()
+        self.pipeline.set_state(Gst.State.PLAYING)
 
