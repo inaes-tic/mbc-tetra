@@ -7,3 +7,16 @@ results so far:
     with the preview sinks, it shouldn't matter that they are in they own window instead of the main.
 
 will try with shm next.
+
+with SHM:
+    performance is better, can have multiple readers.
+    if the shmsink pipeline dies all the sources error
+    need to be very specific about caps when using shmsrc
+
+    "gst_audio_buffer_clip: assertion `segment->format == GST_FORMAT_TIME || segment->format == GST_FORMAT_DEFAULT' failed" liveadder at fault?
+    and no joy. if I don't link the shmsrc's i can get audio / video with gst-launch-1.0. Seems adder / liveadder and videomixer don't like
+    what shmsrc produces.
+    try again with patch from https://bugzilla.gnome.org/show_bug.cgi?id=702842 applied, 
+
+    ok it works now,cpu usage is a tad higher than the inter version but still lower than the original case. Something murky is going on
+    with the timestamps as liveadder refuses to work , so back to using adder but it will bite later.
