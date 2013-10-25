@@ -853,6 +853,80 @@ class InterPlayer(GObject.GObject):
 
 GObject.type_register(InterPlayer)
 
+class InterSHMSource(BaseInput):
+    def __init__(self, name=None, channel='channel-1', slave=None):
+        self.slave = slave
+        BaseInput.__init__(self, name=name)
+
+        self.channel = os.path.join('/dev/shm/', channel)
+        self.__build_audio_pipeline()
+        self.__build_video_pipeline()
+
+
+        agpad = Gst.GhostPad.new('audiosrc', self.aq.get_static_pad('src'))
+        vgpad = Gst.GhostPad.new('videosrc', self.vq.get_static_pad('src'))
+
+        self.add_pad(agpad)
+        self.add_pad(vgpad)
+
+    def set_mute(self, *args, **kwargs):
+        if self.slave:
+            return self.slave.set_mute(*args, **kwargs)
+
+    def set_geometry(self, *args, **kwargs):
+        if self.slave:
+            return self.slave.set_geometry(*args, **kwargs)
+
+    def __build_audio_pipeline(self):
+        #XXX UGLY HACK: interaudiosrc reports itself as being live source with a fixed and big latency.
+        # that delays the whole pipeline, so we changed gstinteraudiosrc.c to set min and max latency
+        # to 5 buffers instead of the default of 30.
+        aq    = Gst.ElementFactory.make('identity', 'InterSource Audio Q')
+        aint  = Gst.ElementFactory.make('shmsrc', 'InterSource interaudiosrc')
+
+        #aq.set_property('single-segment', True)
+
+        sockpath = self.channel+'-audio'
+        aint.set_property('socket-path', sockpath)
+        aint.set_property('do-timestamp', True)
+        aint.set_property('is-live', True)
+
+        ##aint  = Gst.ElementFactory.make('audiotestsrc', 'InterSource interaudiosrc')
+        ##aint.set_property('is-live', True)
+        for el in [aq, aint]:
+            self.add(el)
+
+        aint.link(aq)
+        self.aq = aq
+
+
+
+    def __build_video_pipeline(self):
+        vq    = Gst.ElementFactory.make('identity', 'InterSource Video Q')
+        vint  = Gst.ElementFactory.make('shmsrc', 'InterSource intervideosrc')
+        vcaps = Gst.ElementFactory.make('capsfilter', 'InterSource videocaps')
+
+        vcaps.set_property('caps', VIDEO_CAPS_SIZE)
+
+        vq.set_property('single-segment', True)
+
+        sockpath = self.channel+'-video'
+        vint.set_property('socket-path', sockpath)
+        vint.set_property('do-timestamp', True)
+        vint.set_property('is-live', True)
+
+        ##vint  = Gst.ElementFactory.make('videotestsrc', 'InterSource intervideosrc')
+        ##vint.set_property('is-live', True)
+
+        for el in [vq, vint, vcaps]:
+            self.add(el)
+
+        vint.link(vcaps)
+        vcaps.link(vq)
+        self.vq = vq
+
+GObject.type_register(InterSHMSource)
+
 ALL_PROBES = [C920Probe]
 
 

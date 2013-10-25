@@ -21,8 +21,8 @@ GObject.threads_init()
 Gst.init(sys.argv)
 
 from common import *
-from output_sinks import AutoOutput, MP4Output, MKVOutput, InterSink
-from input_sources import InterSource
+from output_sinks import AutoOutput, MP4Output, MKVOutput, InterSink, InterSHMSink
+from input_sources import InterSource, InterSHMSource
 from transitions import VideoMixerTransition, InputSelectorTransition
 
 
@@ -92,6 +92,7 @@ class TetraApp(GObject.GObject):
         self.levels = []
 
         self.amixer = Gst.ElementFactory.make ('adder', None)
+        #self.amixer = Gst.ElementFactory.make ('liveadder', None)
         self.insert_mixer = Gst.ElementFactory.make ('liveadder', None)
 
 
@@ -156,10 +157,11 @@ class TetraApp(GObject.GObject):
         if type == 'input':
             self.inputs.append(source)
             channel=self._get_channel()
-            snk = InterSink(source=source, channel=channel)
-            source = InterSource(channel=channel, slave=source)
+            snk = InterSHMSink(source=source, channel=channel)
+            #source = InterSource(channel=channel, slave=source)
+            source = InterSHMSource(channel=channel, slave=source)
             self.pipeline.add(source)
-            logging.debug('_add_source %s link to amixer: %s', source, source.link_pads('audiosrc', self.amixer, 'sink_%u'))
+            logging.debug('_add_source %s link to amixer: %s', source, source.link_pads_filtered('audiosrc', self.amixer, 'sink_%u', AUDIO_CAPS))
         else:
             self.pipeline.add(source)
             logging.debug('_add_source %s link to insert_mixer: %s', source, source.link_pads('audiosrc', self.insert_mixer, 'sink_%u'))
