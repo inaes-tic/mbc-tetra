@@ -2,6 +2,7 @@
 
 import logging
 
+import threading
 import time
 import sys
 import os
@@ -135,7 +136,6 @@ class AutoOutput(BaseOutput):
         self.vq = Gst.ElementFactory.make('queue2', 'video q')
 
         self.asink = Gst.ElementFactory.make('autoaudiosink', 'audio sink')
-        self.asink = Gst.ElementFactory.make('alsasink', 'audio sink')
         self.vsink = Gst.ElementFactory.make('xvimagesink', 'video sink')
         self.preview_sink = self.vsink
 
@@ -295,5 +295,99 @@ class MKVOutput(BaseH264Output):
 
 
 
+class InterSink(BaseArchivable):
+    __gsignals__ = {
+       "level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
+    }
+    config_section = None
+    _elem_type = 'sink'
+    def __init__(self, source=None, channel='channel-1'):
+        BaseArchivable.__init__(self)
+        self.channel = channel
+        self.source = None
+        self.serial = None
+        self._to_remove = deque()
+        self._remove_lck = threading.Lock()
 
+        desc = 'intervideosink name=interv channel=%s interaudiosink channel=%s name=intera' % (channel, channel)
+
+        p = Gst.parse_launch(desc)
+        self.pipeline = p
+
+        self.add_pad(Gst.GhostPad.new('audiosink', p.get_by_name('intera').get_static_pad('sink')))
+        self.add_pad(Gst.GhostPad.new('videosink', p.get_by_name('interv').get_static_pad('sink')))
+
+        bus = p.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message::element", self.bus_element_cb)
+        bus.connect("message", self.bus_message_cb)
+
+        p.add(self)
+
+        if source:
+            self.set_source(source)
+
+    def set_source(self, source):
+        source.connect('removed', self.source_removed_cb)
+        source.connect('ready-to-unlink', self.source_removed_cb)
+        logging.debug('Inter set_source() null(): %s', self.pipeline.set_state(Gst.State.NULL))
+        self.source = source
+        self.serial = source.serial
+        self.pipeline.add(source)
+        logging.debug('InterSink %s link audio: %s', self.channel, source.link_pads('audiosrc', self, 'audiosink'))
+        logging.debug('InterSink %s link video: %s', self.channel, source.link_pads('videosrc', self, 'videosink'))
+        logging.debug('Inter set_source() sync_state_with_parent(): %s', source.sync_state_with_parent())
+        logging.debug('Inter set_source() start(): %s', self.pipeline.set_state(Gst.State.PLAYING))
+
+    def bus_element_cb (self, bus, msg, arg=None):
+        if msg.get_structure() is None:
+            return True
+
+        s = msg.get_structure()
+        if s.get_name() == "ready-to-unlink":
+            msg.src.do_unlink()
+
+        if s.get_name() == "unlinked":
+            self.source_removed_cb(msg.src)
+
+        if s.get_name() == "level":
+            arms = s.get_value('rms')
+            apeak = s.get_value('peak')
+            larms = len(arms)
+            lapeak = len(arms)
+            if larms and lapeak:
+                rms = sum (arms) / len (arms)
+                peak = sum (apeak) / len (apeak)
+                self.emit('level', self.source, apeak)
+        return True
+
+    def bus_message_cb (self, bus, msg, arg=None):
+        def log_error():
+            logging.error('Gst msg Inter ERORR src: %s msg: %s', msg.src, msg.parse_error())
+            logging.debug('Gst msg Inter ERROR CURRENT STATE %s', self.pipeline.get_state(0))
+            Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE , 'debug_inter_error')
+
+        if msg.type == Gst.MessageType.CLOCK_LOST:
+            self.pipeline.set_state (Gst.State.PAUSED)
+            self.pipeline.set_state (Gst.State.PLAYING)
+
+        elif msg.type == Gst.MessageType.ERROR:
+            parent = msg.src.get_parent()
+            if parent in self.source or parent is self.source:
+                self.pipeline.set_state(Gst.State.NULL)
+                self.source.do_unlink()
+                return True
+
+        return True
+
+    def source_removed_cb (self, source):
+        logging.debug('Inter SOURCE REMOVED CB %s', source)
+        if source in self.pipeline.children:
+            self.pipeline.remove(source)
+        try:
+            self._to_remove.remove(source)
+        except ValueError:
+            pass
+        self.source = None
+        logging.debug('Inter SOURCE BIN REMOVED FROM PIPELINE OK')
 

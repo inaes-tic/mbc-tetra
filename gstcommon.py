@@ -10,6 +10,7 @@ from gi.repository import GObject, Gst
 class BaseBin(Gst.Bin):
     __gsignals__ = {
        "removed": (GObject.SIGNAL_RUN_FIRST, None, []),
+       "ready-to-unlink": (GObject.SIGNAL_RUN_FIRST, None, []),
     }
     _elem_type = 'source'
 
@@ -49,15 +50,17 @@ class BaseBin(Gst.Bin):
             if not pad:
                 continue
             if pad.is_blocked() == False:
-                ok = False
                 if pad not in self._probes:
                     self._probes[pad] = pad.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM | Gst.PadProbeType.BLOCK_UPSTREAM, self.pad_block_cb, None)
                     logging.debug('DISCONNECT ELEMENT ADD PAD PROBE FOR %s PAD IS BLOCKED? %s PAD IS LINKED? %s', pad, pad.is_blocked(), pad.is_linked())
+                if pad.is_blocked() == False:
+                    ok = False
 
         if (ok or state[1] in [Gst.State.NULL, Gst.State.PAUSED]):
             self._on_unlink = True
             logging.debug('PAD BLOCK, state NULL or PAUSED. signal ready-to-unlink')
             self._send_element_message('ready-to-unlink')
+            self.emit('ready-to-unlink')
         return False
 
     def do_unlink (self, *args):

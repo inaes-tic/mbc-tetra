@@ -21,7 +21,8 @@ GObject.threads_init()
 Gst.init(sys.argv)
 
 from common import *
-from output_sinks import AutoOutput, MP4Output, MKVOutput
+from output_sinks import AutoOutput, MP4Output, MKVOutput, InterSink
+from input_sources import InterSource
 from transitions import VideoMixerTransition, InputSelectorTransition
 
 
@@ -50,6 +51,8 @@ class TetraApp(GObject.GObject):
         self._recording = False
         self._to_remove = {}
         self._remove_lck = threading.Lock()
+        self._chanidx = 0
+        self._intersinks = []
 
         self.noise_baseline = DEFAULT_NOISE_BASELINE
         self.speak_up_threshold = SPEAK_UP_THRESHOLD
@@ -83,13 +86,17 @@ class TetraApp(GObject.GObject):
         self.backgrounds = []
         self.inputs = []
         self.outputs = []
+        self.intersinks = []
         self.audio_inserts = []
         self.video_inputs = []
         self.video_inserts = []
         self.levels = []
 
+## XXX: need to research why liveadder fails.
+##        self.amixer = Gst.ElementFactory.make ('liveadder', None)
+##        self.insert_mixer = Gst.ElementFactory.make ('liveadder', None)
         self.amixer = Gst.ElementFactory.make ('adder', None)
-        self.insert_mixer = Gst.ElementFactory.make ('liveadder', None)
+        self.insert_mixer = Gst.ElementFactory.make ('adder', None)
 
 
         self.cam_vol = Gst.ElementFactory.make ('volume', None)
@@ -137,18 +144,52 @@ class TetraApp(GObject.GObject):
         sink.connect('record-stopped', self._record_stopped)
         sink.sync_state_with_parent()
 
+    def _get_channel(self):
+        ret = 'intersrc%d' % self._chanidx
+        self._chanidx += 1
+        return ret
+
+    def _get_intersink_for_source(self, source):
+        sinks = [sink for sink in self._intersinks if sink.source is None]
+        old = [sink for sink in sinks if sink.serial == source.serial]
+        if old:
+            sink = old[0]
+# returns the first unused channel, perhaps we'll find this useful later?
+# for now we try to preserve original mapping
+#        elif sinks:
+#            sink = sinks[0]
+        else:
+            channel = self._get_channel()
+            sink = InterSink(source=source, channel=channel)
+            self._intersinks.append(sink)
+            return sink, True
+
+        sink.set_source(source)
+        return sink, False
+
     def _add_source(self, source, type='input', *args, **kwargs):
         source.connect('ready-to-record', self._start_record_ok)
         source.connect('record-stopped', self._record_stopped)
 
-        self.pipeline.add(source)
 
         if type not in ['input', 'background', 'video-insert']:
             type = 'video-insert'
 
+        # inserts and background are already an intersrc but for the rest we put them
+        # on a different pipeline and link to the main via inter elements.
         if type == 'input':
-            logging.debug('_add_source %s link to amixer: %s', source, source.link_pads('audiosrc', self.amixer, 'sink_%u'))
+            sink, isNew = self._get_intersink_for_source(source)
+            if isNew:
+                channel=sink.channel
+                source = InterSource(channel=channel, slave=source)
+                source.add_preview()
+                self.pipeline.add(source)
+                logging.debug('_add_source %s link to amixer: %s', source, source.link_pads('audiosrc', self.amixer, 'sink_%u'))
+            else:
+                source = [src for src in self.inputs if src.channel == sink.channel][0]
+                return source
         else:
+            self.pipeline.add(source)
             logging.debug('_add_source %s link to insert_mixer: %s', source, source.link_pads('audiosrc', self.insert_mixer, 'sink_%u'))
 
         if type in ['input', 'video-insert']:
@@ -156,38 +197,48 @@ class TetraApp(GObject.GObject):
             self.audio_peak[source] = deque (maxlen=WINDOW_LENGTH * 10)
             if type == 'input':
                 self.inputs.append(source)
+                self.levels.append(source.level)
+
+                self.mixer.add_input_source(source)
+                self.current_source = source
             else:
                 self.video_inserts.append(source)
-            self.levels.append(source.level)
+                self.levels.append(source.level)
 
-            self.mixer.add_input_source(source)
-            self.current_source = source
+                self.mixer.add_input_source(source)
+                self.current_source = source
 
         elif type=='background':
             self.backgrounds.append(source)
             self.mixer.add_background_source(source)
 
+        return source
+
+    def activate_source(self, source):
         if source.xvsink:
             self.preview_sinks.append(source.xvsink)
         source.initialize()
 
-        logging.debug('ADD %s SOURCE , PIPE STATE: %s', type, self.pipeline.get_state(0))
-        logging.debug('ADD %s SOURCE, SYNC WITH PARENT: %s', type, source.sync_state_with_parent())
+        logging.debug('Activate %s SOURCE , PIPE STATE: %s', source, self.pipeline.get_state(0))
+        logging.debug('Activate %s SOURCE, SYNC WITH PARENT: %s', source, source.sync_state_with_parent())
         if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
+            if source.xvsink:
+                self.emit ('prepare-window-handle', source, source)
             if len(self.inputs)>1 or self.backgrounds:
                 self.pipeline.set_state(Gst.State.PLAYING)
             else:
                 self.start()
         self.pipeline.recalculate_latency()
 
+
     def add_input_source(self, source):
-        self._add_source(source, type='input')
+        return self._add_source(source, type='input')
 
     def add_background_source(self, source, xpos=0, ypos=0):
-        self._add_source(source, type='background')
+        return self._add_source(source, type='background')
 
     def add_video_insert(self, source):
-        self._add_source(source, type='video-insert')
+        return self._add_source(source, type='video-insert')
 
     def add_audio_insert(self, source):
         self.pipeline.add(source)
@@ -304,7 +355,8 @@ class TetraApp(GObject.GObject):
                 GLib.idle_add(self._set_xvsync)
                 logging.debug('STARTING (firstime?) ret= %s', ret)
             self.pipeline.set_state (Gst.State.READY)
-            GLib.timeout_add(100, f)
+### XXX: better handling of async returns.
+            GLib.timeout_add(300, f)
             return
 
         ret = self.pipeline.set_state (Gst.State.PLAYING)
@@ -530,6 +582,7 @@ class TetraApp(GObject.GObject):
             return True
         s = msg.get_structure()
         if s.get_name() in  ("prepare-xwindow-id", "prepare-window-handle"):
+            logging.debug('PREPARE WnHND')
             self.emit (s.get_name(), msg.src, msg.src.get_parent())
             return True
 

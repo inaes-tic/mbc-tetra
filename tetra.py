@@ -106,17 +106,19 @@ class MainWindow(object):
 
         self.window.show_all()
 
-        for (src,props) in self.imon.get_devices():
-            source = src(**props)
-            self.add_source(source)
-            self.app.add_input_source(source)
-
         live = self.builder.get_object('LiveOut')
         self.live = live
         self.live_xid = live.get_property('window').get_xid()
         live.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
         live.connect('button-press-event', self.live_click_cb)
+        app.live_sink.set_window_handle(live.get_property('window').get_xid())
         #live.connect('draw', self.live_draw_cb)
+
+        for (src,props) in self.imon.get_devices():
+            source = src(**props)
+            src = self.app.add_input_source(source)
+            self.add_source(src)
+            self.app.activate_source(src)
 
         auto = self.builder.get_object('automatico')
         if auto:
@@ -131,7 +133,6 @@ class MainWindow(object):
             self.builder.get_object('ready').connect('clicked', state_cb, Gst.State.READY)
             self.builder.get_object('null').connect('clicked', state_cb, Gst.State.NULL)
 
-        app.live_sink.set_window_handle(live.get_property('window').get_xid())
 
         self.app.set_automatic(False)
         self.player = input_sources.InterPlayer()
@@ -142,8 +143,8 @@ class MainWindow(object):
         self.nonlive.connect('stop', self.player_paused_cb)
 
         inter = input_sources.InterSource()
-        self.app.add_video_insert(inter)
-        self.intersource = inter
+        self.intersource = self.app.add_video_insert(inter)
+        self.app.activate_source(self.intersource)
 
     def player_playing_cb(self, player, *args):
         self.app.set_active_input_by_source(self.intersource, transition=False)
@@ -153,21 +154,37 @@ class MainWindow(object):
 
     def source_added_cb(self, imon, src, props):
         source = src(**props)
-        preview = self.add_source()
-        def _add_src():
-            self.previews[source] = preview
-            preview.set_source(source)
-            self.app.add_input_source(source)
+        logging.debug('SOURCE ADD SERIAL: %s', source.serial)
+        logging.debug('SERIALS: %s', [src.serial for src,prev in self.previews.items()])
+        def _add_src(preview, source):
+            src = self.app.add_input_source(source)
+            logging.debug('SOURCE ADD app.add_input_source(): %s serial: %s', src, src.serial)
+            self.previews[src] = preview
+            preview.set_source(src)
+            self.app.activate_source(src)
             Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.CAPS_DETAILS , 'source_added_cb')
-        # XXX: FIXME: we should wait till pulseaudio releases the card.
-        # (or disable it)
-        GLib.timeout_add(9*1000, _add_src)
+        preview = self.get_preview_for_source(source) or self.add_source()
+            # XXX should give visual feedback that source is being initialized...
+            # XXX: FIXME: we should wait till pulseaudio releases the card.
+            # (or disable it)
+        GLib.timeout_add(9*1000, _add_src, preview, source)
+
+    def get_preview_for_source(self, source):
+        previews = [(src,prev) for src,prev in self.previews.items() if src.serial == source.serial]
+        if previews:
+            src, prev = previews[0]
+            self.previews[source] = prev
+            self.previews.pop(src)
+            return prev
+        else:
+            return None
 
     def add_source(self, source=None):
         preview = PreviewWidget(source)
         self.preview_box.pack_start(preview, False, False, 0)
         preview.show()
-        self.previews[source] = preview
+        if source:
+            self.previews[source] = preview
         preview.connect('preview-clicked', self.preview_click_cb)
         return preview
 
@@ -237,6 +254,7 @@ class MainWindow(object):
         self.app.set_active_input_by_source (source)
 
     def prepare_window_handle_cb (self, app, xvimagesink, source):
+        logging.debug('PREPARE WINDOW HANDLE %s', source)
         if source in self.previews:
             logging.debug('prepare window handle %s', source)
             self.previews[source].set_window_handle()
@@ -245,10 +263,14 @@ class MainWindow(object):
             Gdk.threads_enter ()
             xvimagesink.set_window_handle(self.live_xid)
             xvimagesink.set_property('sync', XV_SYNC)
+            xvimagesink.expose()
             Gdk.threads_leave ()
+            return True
 
     def source_disconnected_cb (self, app, source):
         logging.debug('SOURCE DISCONNECTED CB EN TETRA MAIN')
+        # let's try to reuse the widget, better hide it than remove.
+        return True
         if source in self.previews:
             logging.debug('SOURCE DISCONNECTED CB EN TETRA MAIN source en previews')
             preview = self.previews.pop(source)

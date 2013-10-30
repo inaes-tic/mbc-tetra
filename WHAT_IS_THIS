@@ -1,0 +1,29 @@
+experimental repo.
+trying to decouple inputs from the main mixing / processing
+
+results so far:
+    - improved handling of cameras being disconnected.
+    - less cpu usage, this is something I didn't expect.
+    - now it lets us have fixed 'slots' assigned to a camera
+
+many things left, some are:
+    cleanup of this mess
+    behaviour when a camera is disconnected
+        - hide the preview or leave it showing black?
+        - if hide then switching with keyboard must take account of that (now it doesn't)
+    when it comes back give feedback that it did (re-show the spinner?)
+
+dependencies:
+    - pyudev from https://github.com/inaes-tic/pyudev , branch 'gobject-introspection'
+    - GStreamer 1.2 ecosystem (we use stable 1.2 from git)
+    - you may want to patch gst-plugins-bad/gst/inter/gstinteraudiosrc.c with:
+--- a/gst/inter/gstinteraudiosrc.c
++++ b/gst/inter/gstinteraudiosrc.c
+@@ -343,12 +343,13 @@ gst_inter_audio_src_query (GstBaseSrc * src, GstQuery * query)
+     case GST_QUERY_LATENCY:{
+       GstClockTime min_latency, max_latency;
+ 
+-      min_latency = 30 * gst_util_uint64_scale_int (GST_SECOND, SIZE, 48000);
++      min_latency = 3 * gst_util_uint64_scale_int (GST_SECOND, SIZE, 48000);
+ 
+This is not strictly necessary nor correct.

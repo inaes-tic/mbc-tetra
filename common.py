@@ -22,6 +22,8 @@ VIDEO_HEIGHT = 576
 VIDEO_WIDTH = 640
 VIDEO_HEIGHT = 480
 
+# I420: 12 bits per pixel, 4 buffers of that.
+SHM_SIZE = int( (4 * 12 / 8.) * VIDEO_WIDTH * VIDEO_HEIGHT )
 VIDEO_RATE = "24/1"
 VIDEO_CAPS = Gst.Caps.from_string ('image/jpeg,width=%d,height=%d,framerate=%s,format=I420' % (VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_RATE))
 VIDEO_CAPS_SIZE = Gst.Caps.from_string ('video/x-raw,width=%d,height=%d,framerate=%s,format=I420' % (VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_RATE))

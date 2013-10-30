@@ -109,7 +109,8 @@ class PreviewWidget(Gtk.Box):
         Gtk.Box.__init__(self)
         builder = Gtk.Builder ()
         self.builder = builder
-        self.source = source
+        self.source = None
+        self.serial = (source and source.serial) or None
         self.xid = None
 
         builder.add_objects_from_file (config.get('preview_ui','preview_box.ui'), ['PreviewBoxItem'])
@@ -118,6 +119,10 @@ class PreviewWidget(Gtk.Box):
 
         slider = builder.get_object ('volume')
         slider.connect ("value-changed", self.__slider_cb)
+
+        da = self.builder.get_object('preview')
+        da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
+        da.connect('button-press-event', self.__preview_click_cb)
 
         bars = []
         bar_l = builder.get_object ('peak_L')
@@ -136,11 +141,10 @@ class PreviewWidget(Gtk.Box):
         self.connect('map', self.__map_event_cb)
 
     def set_source(self, source=None):
-        if source:
+        if source and source is not self.source:
+            Gdk.threads_enter ()
             da = self.builder.get_object('preview')
-            da.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
             self.source = source
-            da.connect('button-press-event', self.__preview_click_cb)
             da.show()
             spinner = self.builder.get_object('spinner')
 
@@ -148,6 +152,7 @@ class PreviewWidget(Gtk.Box):
                 self.builder.get_object('preview_container').remove(spinner)
                 spinner.destroy()
 
+            Gdk.threads_leave ()
             self.set_window_handle(safe=True)
 
     def set_window_handle(self, safe=False):
@@ -156,11 +161,18 @@ class PreviewWidget(Gtk.Box):
         if safe:
             self.__get_xid()
 
-        if self.xid is not None:
+        if self.xid is not None and self.source.xvsink:
+            logging.debug('Widget set_window_handle() widget: %s source: %s', self, self.source)
             Gdk.threads_enter ()
+            self.source.xvsink.set_state(Gst.State.READY)
             self.source.xvsink.set_window_handle(self.xid)
             self.source.xvsink.set_property('sync', XV_SYNC)
+            self.source.xvsink.expose()
+            self.source.xvsink.set_state(Gst.State.PLAYING)
             Gdk.threads_leave ()
+
+    def set_levels_cb(self, source, peaks):
+        return self.set_levels(peaks)
 
     def set_levels (self, peaks):
         Gdk.threads_enter ()

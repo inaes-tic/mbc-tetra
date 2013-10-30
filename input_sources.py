@@ -35,12 +35,16 @@ class GeneralInputError(Exception):
 
 class BaseInput(BaseArchivable):
     _elem_type = 'source'
+    __gsignals__ = {
+       "level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
+    }
     def __init__(self, name=None, width=None, height=None):
         BaseArchivable.__init__(self)
         self.volume = None
         self.xvsink = None
         self.level = None
         self.vcaps = None
+        self.serial = None
         self._geometries = deque()
         self._current_geometry = (width, height)
         self._on_error = False
@@ -119,6 +123,7 @@ class C920Input(BaseInput):
         BaseInput.__init__(self, name=name, width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
 
         self._filename_template = serial
+        self.serial = serial
         self.asink = None
         self.vsink = None
 
@@ -140,6 +145,7 @@ class C920Input(BaseInput):
 
     def initialize(self):
         self.set_uvc_controls()
+        return
         self.xvsink.set_property('sync', XV_SYNC)
 
     def do_state_changed(self, prev, curr, new):
@@ -174,19 +180,20 @@ class C920Input(BaseInput):
         parse = Gst.ElementFactory.make ('jpegparse', None)
         dec = Gst.ElementFactory.make ('jpegdec', None)
         q1 = Gst.ElementFactory.make ('queue2', None)
-        q2 = Gst.ElementFactory.make ('queue2', None)
+##        q2 = Gst.ElementFactory.make ('queue2', None)
         streamvt = Gst.ElementFactory.make ('tee', None)
         vconv = Gst.ElementFactory.make ('videoconvert', None)
         vscale = Gst.ElementFactory.make ('videoscale', None)
         vcaps = Gst.ElementFactory.make ('capsfilter', None)
-        sink = Gst.ElementFactory.make ('xvimagesink', None)
-        sink.set_property('sync', XV_SYNC)
-
-        self.xvsink = sink
+##        sink = Gst.ElementFactory.make ('xvimagesink', None)
+##        sink.set_property('sync', XV_SYNC)
+##
+##        self.xvsink = sink
         self.vsrc = src
         self.vcaps = vcaps
 
-        for el in (src, sink, q0, q1, q2, streamvt, tee, parse, dec, vconv, vscale, vcaps):
+##        for el in (src, sink, q0, q1, q2, streamvt, tee, parse, dec, vconv, vscale, vcaps):
+        for el in (src, q0, q1, streamvt, tee, parse, dec, vconv, vscale, vcaps):
             self.add(el)
 
         if props:
@@ -201,8 +208,8 @@ class C920Input(BaseInput):
         parse.link(dec)
         dec.link(tee)
         tee.link(q1)
-        tee.link(q2)
-        q2.link(sink)
+#        tee.link(q2)
+#        q2.link(sink)
         q1.link(vconv)
         vconv.link(vscale)
         vscale.link(vcaps)
@@ -629,8 +636,11 @@ class UriDecodebinSource(BaseInput):
 GObject.type_register(UriDecodebinSource)
 
 class InterSource(BaseInput):
-    def __init__(self, name=None, channel='channel-1'):
+    def __init__(self, name=None, channel='channel-1', slave=None):
+        self.slave = slave
         BaseInput.__init__(self, name=name)
+
+        self.serial = slave and slave.serial
 
         self.channel = channel
         self.__build_audio_pipeline()
@@ -643,27 +653,56 @@ class InterSource(BaseInput):
         self.add_pad(agpad)
         self.add_pad(vgpad)
 
+    def set_mute(self, *args, **kwargs):
+        if self.slave:
+            return self.slave.set_mute(*args, **kwargs)
+
+    def set_geometry(self, *args, **kwargs):
+        if self.slave:
+            return self.slave.set_geometry(*args, **kwargs)
+
+    def add_preview(self, *args):
+        vq2   = Gst.ElementFactory.make('identity', 'InterSource Video Q2')
+        sink  = Gst.ElementFactory.make('xvimagesink', 'InterSource videosink')
+        self.add(vq2)
+        self.add(sink)
+        self.vtee.link(vq2)
+        vq2.link(sink)
+        self.xvsink = sink
+        if self.slave and not self.slave.xvsink:
+            self.slave.xvsink = self.xvsink
+        vq2.sync_state_with_parent()
+        sink.sync_state_with_parent()
+
     def __build_audio_pipeline(self):
         #XXX UGLY HACK: interaudiosrc reports itself as being live source with a fixed and big latency.
         # that delays the whole pipeline, so we changed gstinteraudiosrc.c to set min and max latency
         # to 5 buffers instead of the default of 30.
         aq    = Gst.ElementFactory.make('identity', 'InterSource Audio Q')
+        aq1   = Gst.ElementFactory.make('queue2', 'InterSource Audio Q1')
+        at    = Gst.ElementFactory.make('tee', 'InterSource Audio T')
+        level = Gst.ElementFactory.make('level', 'InterSource Audio Level')
         aint  = Gst.ElementFactory.make('interaudiosrc', 'InterSource interaudiosrc')
         aint.set_property('channel', self.channel)
         aint.set_property('do-timestamp', True)
 
-        for el in [aq, aint]:
+        for el in [aq, aq1, at, aint, level]:
             self.add(el)
 
-        aint.link(aq)
+        aint.link(at)
+        at.link(aq)
+        at.link(level)
         self.aq = aq
 
 
 
     def __build_video_pipeline(self):
         vq    = Gst.ElementFactory.make('identity', 'InterSource Video Q')
+        vq1   = Gst.ElementFactory.make('identity', 'InterSource Video Q1')
         vint  = Gst.ElementFactory.make('intervideosrc', 'InterSource intervideosrc')
         vcaps = Gst.ElementFactory.make('capsfilter', 'InterSource videocaps')
+        vtee  = Gst.ElementFactory.make('tee', 'InterSource video Tee')
+        self.vtee = vtee
 
         vcaps.set_property('caps', VIDEO_CAPS_SIZE)
 
@@ -671,12 +710,14 @@ class InterSource(BaseInput):
         vint.set_property('do-timestamp', True)
         vint.set_property('typefind', True)
 
-        for el in [vq, vint, vcaps]:
+        for el in [vq, vq1, vtee, vint, vcaps]:
             self.add(el)
 
         vint.link(vcaps)
         vcaps.link(vq)
-        self.vq = vq
+        vq.link(vtee)
+        vtee.link(vq1)
+        self.vq = vq1
 
 GObject.type_register(InterSource)
 

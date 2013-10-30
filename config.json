@@ -1,0 +1,53 @@
+{
+    "FLVOutput": {
+        "audio_bitrate": 192000, 
+        "host": "127.0.0.1", 
+        "port": 9078, 
+        "x264_bitrate": 1024, 
+        "x264_speed_preset": "ultrafast"
+    }, 
+    "FileArchiving": {
+        "folder": "/media/xp/capturas_en_ntfs", 
+        "name_template": "captura_tetra"
+    }, 
+    "MKVOutput": {
+        "audio_bitrate": 192000, 
+        "host": "127.0.0.1", 
+        "port": 9078, 
+        "x264_bitrate": 1024, 
+        "x264_speed_preset": "ultrafast"
+    }, 
+    "Nonlive": {
+        "playlist": []
+    }, 
+    "StreamingOut": {
+        "http_flv": {
+            "enabled": true, 
+            "host": "", 
+            "path": "vivo.flv", 
+            "port": "8080"
+        }, 
+        "rtsp": {
+            "enabled": true, 
+            "rtsp_host": "239.255.0.1", 
+            "rtsp_port": "5004", 
+            "sap_name": "Tetra", 
+            "sdp_host": "0.0.0.0", 
+            "sdp_path": "tetra.sdp", 
+            "sdp_port": "8080", 
+            "ttl": "2"
+        }
+    }, 
+    "main_ui": "main_ui_tabbed.ui", 
+    "mastermonitor_ui": "master_monitor.ui", 
+    "nonlive_ui": "nonlive.ui", 
+    "output_mix": {
+        "extern_card": "default", 
+        "mix-source": "internal"
+    }, 
+    "pip_ui": "pipmgr.ui", 
+    "preview_ui": "preview_box_horiz.ui", 
+    "rec_ui": "rec.ui", 
+    "theme": "Adwaita", 
+    "use_dark_theme": true
+}
