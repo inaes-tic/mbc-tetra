@@ -118,6 +118,7 @@ class MainWindow(object):
             source = src(**props)
             src = self.app.add_input_source(source)
             self.add_source(src)
+            self.app.activate_source(src)
 
         auto = self.builder.get_object('automatico')
         if auto:
@@ -142,8 +143,8 @@ class MainWindow(object):
         self.nonlive.connect('stop', self.player_paused_cb)
 
         inter = input_sources.InterSource()
-        self.app.add_video_insert(inter)
-        self.intersource = inter
+        self.intersource = self.app.add_video_insert(inter)
+        self.app.activate_source(self.intersource)
 
     def player_playing_cb(self, player, *args):
         self.app.set_active_input_by_source(self.intersource, transition=False)
