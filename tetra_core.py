@@ -92,8 +92,8 @@ class TetraApp(GObject.GObject):
         self.video_inserts = []
         self.levels = []
 
-        self.amixer = Gst.ElementFactory.make ('adder', None)
         self.insert_mixer = Gst.ElementFactory.make ('liveadder', None)
+        self.amixer = Gst.ElementFactory.make ('liveadder', None)
 
 
         self.cam_vol = Gst.ElementFactory.make ('volume', None)
