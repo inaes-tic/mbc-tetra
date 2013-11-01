@@ -355,7 +355,8 @@ class TetraApp(GObject.GObject):
                 GLib.idle_add(self._set_xvsync)
                 logging.debug('STARTING (firstime?) ret= %s', ret)
             self.pipeline.set_state (Gst.State.READY)
-            GLib.timeout_add(100, f)
+### XXX: better handling of async returns.
+            GLib.timeout_add(300, f)
             return
 
         ret = self.pipeline.set_state (Gst.State.PLAYING)
