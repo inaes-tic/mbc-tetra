@@ -35,12 +35,16 @@ class GeneralInputError(Exception):
 
 class BaseInput(BaseArchivable):
     _elem_type = 'source'
+    __gsignals__ = {
+       "level": (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
+    }
     def __init__(self, name=None, width=None, height=None):
         BaseArchivable.__init__(self)
         self.volume = None
         self.xvsink = None
         self.level = None
         self.vcaps = None
+        self.serial = None
         self._geometries = deque()
         self._current_geometry = (width, height)
         self._on_error = False
