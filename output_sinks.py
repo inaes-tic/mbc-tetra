@@ -134,13 +134,14 @@ class AutoOutput(BaseOutput):
         self.ai = Gst.ElementFactory.make('identity', 'audio i')
         self.vq = Gst.ElementFactory.make('queue2', 'video q')
 
-        self.asink = Gst.ElementFactory.make('autoaudiosink', 'audio sink')
-        self.asink = Gst.ElementFactory.make('alsasink', 'audio sink')
+        self.asink = Gst.ElementFactory.make('pulsesink', 'audio sink')
         self.vsink = Gst.ElementFactory.make('xvimagesink', 'video sink')
         self.preview_sink = self.vsink
 
-        self.ai.set_property('sync', True)
-        self.asink.set_property('sync', False)
+# this two are needed if we decide to use alsasink instead of pulsesink
+# and https://bugzilla.gnome.org/show_bug.cgi?id=692953 is not fixed yet.
+#        self.ai.set_property('sync', True)
+#        self.asink.set_property('sync', False)
 
         for el in [self.aq, self.ai, self.vq, self.asink, self.vsink]:
             self.add(el)
