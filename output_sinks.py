@@ -392,3 +392,53 @@ class InterSink(BaseArchivable):
         logging.debug('Inter SOURCE BIN REMOVED FROM PIPELINE OK')
 
 
+class SHMOutput(BaseOutput):
+    config_section = 'SHMOutput'
+    _elem_type = 'sink'
+    def __init__(self, source=None):
+        BaseOutput.__init__(self)
+        folder = self.conf.setdefault('folder', '/dev/shm')
+        prefix = self.conf.setdefault('prefix', 'tetra')
+        channel = os.path.join(folder, prefix)
+        self.channel = channel
+
+        aq = Gst.ElementFactory.make('queue2', 'aq')
+        asink = Gst.ElementFactory.make('shmsink', 'asink')
+
+        vq = Gst.ElementFactory.make('queue2', 'vq')
+        vsink = Gst.ElementFactory.make('shmsink', 'vsink')
+
+        for el in [aq, vq, asink, vsink]:
+            self.add(el)
+
+        aq.link(asink)
+        vq.link(vsink)
+
+        self.initialize_shm_sink(vsink, '-video', VIDEO_CAPS_SIZE)
+        self.initialize_shm_sink(asink, '-audio', AUDIO_CAPS)
+
+        self.add_pad(Gst.GhostPad.new('audiosink', aq.get_static_pad('sink')))
+        self.add_pad(Gst.GhostPad.new('videosink', vq.get_static_pad('sink')))
+
+    def initialize_shm_sink(self, sink, suffix, caps):
+        def check_file(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+        sink.set_property('shm-size', SHM_SIZE)
+        sockpath = self.channel+suffix+'.shm'
+        check_file(sockpath)
+        sink.set_property('socket-path', sockpath)
+        sink.set_property('wait-for-connection', False)
+
+        capspath = self.channel+suffix+'.caps'
+        check_file(capspath)
+        fp = open(capspath, 'w')
+        if isinstance(caps, Gst.Caps):
+            fp.write(caps.to_string())
+        else:
+            fp.write(caps)
+        fp.close()
+
