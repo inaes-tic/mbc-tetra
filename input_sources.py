@@ -145,7 +145,6 @@ class C920Input(BaseInput):
 
     def initialize(self):
         self.set_uvc_controls()
-        self.xvsink.set_property('sync', XV_SYNC)
 
     def do_state_changed(self, prev, curr, new):
         if curr == Gst.State.PAUSED:
@@ -179,19 +178,15 @@ class C920Input(BaseInput):
         parse = Gst.ElementFactory.make ('jpegparse', None)
         dec = Gst.ElementFactory.make ('jpegdec', None)
         q1 = Gst.ElementFactory.make ('queue2', None)
-        q2 = Gst.ElementFactory.make ('queue2', None)
         streamvt = Gst.ElementFactory.make ('tee', None)
         vconv = Gst.ElementFactory.make ('videoconvert', None)
         vscale = Gst.ElementFactory.make ('videoscale', None)
         vcaps = Gst.ElementFactory.make ('capsfilter', None)
-        sink = Gst.ElementFactory.make ('xvimagesink', None)
-        sink.set_property('sync', XV_SYNC)
 
-        self.xvsink = sink
         self.vsrc = src
         self.vcaps = vcaps
 
-        for el in (src, sink, q0, q1, q2, streamvt, tee, parse, dec, vconv, vscale, vcaps):
+        for el in (src, q0, q1, streamvt, tee, parse, dec, vconv, vscale, vcaps):
             self.add(el)
 
         if props:
@@ -206,8 +201,6 @@ class C920Input(BaseInput):
         parse.link(dec)
         dec.link(tee)
         tee.link(q1)
-        tee.link(q2)
-        q2.link(sink)
         q1.link(vconv)
         vconv.link(vscale)
         vscale.link(vcaps)
