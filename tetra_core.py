@@ -582,6 +582,7 @@ class TetraApp(GObject.GObject):
             return True
         s = msg.get_structure()
         if s.get_name() in  ("prepare-xwindow-id", "prepare-window-handle"):
+            logging.debug('PREPARE WnHND')
             self.emit (s.get_name(), msg.src, msg.src.get_parent())
             return True
 
