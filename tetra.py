@@ -154,21 +154,37 @@ class MainWindow(object):
 
     def source_added_cb(self, imon, src, props):
         source = src(**props)
-        preview = self.add_source()
-        def _add_src():
-            self.previews[source] = preview
-            preview.set_source(source)
-            self.app.add_input_source(source)
+        logging.debug('SOURCE ADD SERIAL: %s', source.serial)
+        logging.debug('SERIALS: %s', [src.serial for src,prev in self.previews.items()])
+        def _add_src(preview, source):
+            src = self.app.add_input_source(source)
+            logging.debug('SOURCE ADD app.add_input_source(): %s serial: %s', src, src.serial)
+            self.previews[src] = preview
+            preview.set_source(src)
+            self.app.activate_source(src)
             Gst.debug_bin_to_dot_file(app.pipeline, Gst.DebugGraphDetails.NON_DEFAULT_PARAMS | Gst.DebugGraphDetails.MEDIA_TYPE | Gst.DebugGraphDetails.CAPS_DETAILS , 'source_added_cb')
-        # XXX: FIXME: we should wait till pulseaudio releases the card.
-        # (or disable it)
-        GLib.timeout_add(9*1000, _add_src)
+        preview = self.get_preview_for_source(source) or self.add_source()
+            # XXX should give visual feedback that source is being initialized...
+            # XXX: FIXME: we should wait till pulseaudio releases the card.
+            # (or disable it)
+        GLib.timeout_add(9*1000, _add_src, preview, source)
+
+    def get_preview_for_source(self, source):
+        previews = [(src,prev) for src,prev in self.previews.items() if src.serial == source.serial]
+        if previews:
+            src, prev = previews[0]
+            self.previews[source] = prev
+            self.previews.pop(src)
+            return prev
+        else:
+            return None
 
     def add_source(self, source=None):
         preview = PreviewWidget(source)
         self.preview_box.pack_start(preview, False, False, 0)
         preview.show()
-        self.previews[source] = preview
+        if source:
+            self.previews[source] = preview
         preview.connect('preview-clicked', self.preview_click_cb)
         return preview
 
@@ -250,6 +266,8 @@ class MainWindow(object):
 
     def source_disconnected_cb (self, app, source):
         logging.debug('SOURCE DISCONNECTED CB EN TETRA MAIN')
+        # let's try to reuse the widget, better hide it than remove.
+        return True
         if source in self.previews:
             logging.debug('SOURCE DISCONNECTED CB EN TETRA MAIN source en previews')
             preview = self.previews.pop(source)
