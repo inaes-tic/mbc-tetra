@@ -21,7 +21,7 @@ GObject.threads_init()
 Gst.init(sys.argv)
 
 from common import *
-from output_sinks import AutoOutput, MP4Output, MKVOutput, InterSink
+from output_sinks import AutoOutput, MP4Output, MKVOutput, InterSink, SHMOutput
 from input_sources import InterSource
 from transitions import VideoMixerTransition, InputSelectorTransition
 
@@ -126,6 +126,9 @@ class TetraApp(GObject.GObject):
         self.add_output_sink(sink)
 
         sink = MKVOutput()
+        self.add_output_sink(sink)
+
+        sink = SHMOutput()
         self.add_output_sink(sink)
 
 
