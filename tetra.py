@@ -106,17 +106,18 @@ class MainWindow(object):
 
         self.window.show_all()
 
-        for (src,props) in self.imon.get_devices():
-            source = src(**props)
-            self.add_source(source)
-            self.app.add_input_source(source)
-
         live = self.builder.get_object('LiveOut')
         self.live = live
         self.live_xid = live.get_property('window').get_xid()
         live.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.TOUCH_MASK)
         live.connect('button-press-event', self.live_click_cb)
+        app.live_sink.set_window_handle(live.get_property('window').get_xid())
         #live.connect('draw', self.live_draw_cb)
+
+        for (src,props) in self.imon.get_devices():
+            source = src(**props)
+            src = self.app.add_input_source(source)
+            self.add_source(src)
 
         auto = self.builder.get_object('automatico')
         if auto:
@@ -131,7 +132,6 @@ class MainWindow(object):
             self.builder.get_object('ready').connect('clicked', state_cb, Gst.State.READY)
             self.builder.get_object('null').connect('clicked', state_cb, Gst.State.NULL)
 
-        app.live_sink.set_window_handle(live.get_property('window').get_xid())
 
         self.app.set_automatic(False)
         self.player = input_sources.InterPlayer()
