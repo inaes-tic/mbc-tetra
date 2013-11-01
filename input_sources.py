@@ -629,8 +629,12 @@ class UriDecodebinSource(BaseInput):
 GObject.type_register(UriDecodebinSource)
 
 class InterSource(BaseInput):
-    def __init__(self, name=None, channel='channel-1'):
-        BaseInput.__init__(self, name=name)
+    def __init__(self, name=None, channel='channel-1', slave=None):
+        self.slave = None
+        self.slave = slave
+        BaseInput.__init__(self, name=name, width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
+
+        self.serial = slave and slave.serial
 
         self.channel = channel
         self.__build_audio_pipeline()
@@ -643,27 +647,62 @@ class InterSource(BaseInput):
         self.add_pad(agpad)
         self.add_pad(vgpad)
 
+    def set_mute(self, *args, **kwargs):
+        if self.slave:
+            return self.slave.set_mute(*args, **kwargs)
+
+    def set_geometry(self, *args, **kwargs):
+        if self.slave:
+            # need to keep caps on both sides of the inter the same.
+            BaseInput.set_geometry(self, *args, **kwargs)
+            return self.slave.set_geometry(*args, **kwargs)
+
+    def set_slave(self, slave):
+        self.slave = slave
+        self.slave.push_geometry(*self._current_geometry)
+
+    def add_preview(self, *args):
+        vq2   = Gst.ElementFactory.make('identity', 'InterSource Video Q2')
+        sink  = Gst.ElementFactory.make('xvimagesink', 'InterSource videosink')
+        self.add(vq2)
+        self.add(sink)
+        self.vtee.link(vq2)
+        vq2.link(sink)
+        self.xvsink = sink
+        if self.slave and not self.slave.xvsink:
+            self.slave.xvsink = self.xvsink
+        vq2.sync_state_with_parent()
+        sink.sync_state_with_parent()
+
     def __build_audio_pipeline(self):
         #XXX UGLY HACK: interaudiosrc reports itself as being live source with a fixed and big latency.
         # that delays the whole pipeline, so we changed gstinteraudiosrc.c to set min and max latency
         # to 5 buffers instead of the default of 30.
         aq    = Gst.ElementFactory.make('identity', 'InterSource Audio Q')
+        aq1   = Gst.ElementFactory.make('queue2', 'InterSource Audio Q1')
+        at    = Gst.ElementFactory.make('tee', 'InterSource Audio T')
+        level = Gst.ElementFactory.make('level', 'InterSource Audio Level')
         aint  = Gst.ElementFactory.make('interaudiosrc', 'InterSource interaudiosrc')
         aint.set_property('channel', self.channel)
         aint.set_property('do-timestamp', True)
 
-        for el in [aq, aint]:
+        for el in [aq, aq1, at, aint, level]:
             self.add(el)
 
-        aint.link(aq)
+        aint.link(at)
+        at.link(aq)
+        at.link(level)
         self.aq = aq
 
 
 
     def __build_video_pipeline(self):
         vq    = Gst.ElementFactory.make('identity', 'InterSource Video Q')
+        vq1   = Gst.ElementFactory.make('identity', 'InterSource Video Q1')
         vint  = Gst.ElementFactory.make('intervideosrc', 'InterSource intervideosrc')
         vcaps = Gst.ElementFactory.make('capsfilter', 'InterSource videocaps')
+        vtee  = Gst.ElementFactory.make('tee', 'InterSource video Tee')
+        self.vtee = vtee
 
         vcaps.set_property('caps', VIDEO_CAPS_SIZE)
 
@@ -671,12 +710,15 @@ class InterSource(BaseInput):
         vint.set_property('do-timestamp', True)
         vint.set_property('typefind', True)
 
-        for el in [vq, vint, vcaps]:
+        for el in [vq, vq1, vtee, vint, vcaps]:
             self.add(el)
 
         vint.link(vcaps)
         vcaps.link(vq)
-        self.vq = vq
+        vq.link(vtee)
+        vtee.link(vq1)
+        self.vq = vq1
+        self.vcaps = vcaps
 
 GObject.type_register(InterSource)
 
