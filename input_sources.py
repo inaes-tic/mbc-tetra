@@ -123,6 +123,7 @@ class C920Input(BaseInput):
         BaseInput.__init__(self, name=name, width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
 
         self._filename_template = serial
+        self.serial = serial
         self.asink = None
         self.vsink = None
 
