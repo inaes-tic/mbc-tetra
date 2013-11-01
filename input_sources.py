@@ -76,6 +76,7 @@ class BaseInput(BaseArchivable):
 
         self._current_geometry = (width,height)
         caps = Gst.Caps.from_string(tmpl)
+        logging.debug('GEOMS SET: %s %s', self, tmpl)
         if caps:
             self.vcaps.set_property('caps', caps)
             return True
@@ -83,9 +84,10 @@ class BaseInput(BaseArchivable):
     def push_geometry(self, width=None, height=None):
         self._geometries.append(self._current_geometry)
         self.set_geometry(width, height)
+        logging.debug('GEOMS PUSH: %s %s', self, self._geometries)
 
     def pop_geometry(self):
-        logging.debug('GEOMS: %s', self._geometries)
+        logging.debug('GEOMS: %s %s', self, self._geometries)
         try:
             new = self._geometries.pop()
             self.set_geometry(*new)
