@@ -254,6 +254,7 @@ class MainWindow(object):
         self.app.set_active_input_by_source (source)
 
     def prepare_window_handle_cb (self, app, xvimagesink, source):
+        logging.debug('PREPARE WINDOW HANDLE %s', source)
         if source in self.previews:
             logging.debug('prepare window handle %s', source)
             self.previews[source].set_window_handle()
@@ -262,7 +263,9 @@ class MainWindow(object):
             Gdk.threads_enter ()
             xvimagesink.set_window_handle(self.live_xid)
             xvimagesink.set_property('sync', XV_SYNC)
+            xvimagesink.expose()
             Gdk.threads_leave ()
+            return True
 
     def source_disconnected_cb (self, app, source):
         logging.debug('SOURCE DISCONNECTED CB EN TETRA MAIN')
